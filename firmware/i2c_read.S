@@ -11,13 +11,13 @@
  *
  * I2C_Q = a quarter of an SCL period, in clock cycles. Measured in
  * simulation: SCL high = 2*I2C_Q + about 14 cycles; SCL low is at least
- * about 77 cycles (code time). I2C_Q = 119 gives about 100 kHz at 50 MHz;
- * the fastest setting reaches about 380 kHz at 50 MHz.
+ * about 77 cycles (code time).  I2C_Q = 94 gives about 100 kHz at 40 MHz;
+ * the fastest setting reaches about 300 kHz at 40 MHz.
  */
 #include "pinv.h"
 
 #ifndef I2C_Q
-#define I2C_Q 119
+#define I2C_Q 94
 #endif
 #ifndef I2C_ADDR
 #define I2C_ADDR 0x68

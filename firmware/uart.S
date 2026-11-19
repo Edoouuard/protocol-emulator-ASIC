@@ -11,7 +11,7 @@
 #include "pinv.h"
 
 #ifndef BIT_CYCLES
-#define BIT_CYCLES 434      /* 50 MHz / 115200 baud */
+#define BIT_CYCLES 347      /* 40 MHz / 115200 baud */
 #endif
 
     .text

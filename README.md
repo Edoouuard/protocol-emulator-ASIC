@@ -46,7 +46,7 @@ Requires Icarus Verilog. The repository includes a dev container (GitHub Codespa
 ## Building programs
 
 ```bash
-make -C firmware BIT_CYCLES=434   # e.g. 50 MHz / 115200 baud
+make -C firmware BIT_CYCLES=347   # e.g. 40 MHz / 115200 baud
 ```
 
 Requires `riscv64-unknown-elf-gcc` (any RISC-V GNU toolchain with RV32E support).

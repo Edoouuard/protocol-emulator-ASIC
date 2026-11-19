@@ -46,7 +46,7 @@ t += BIT_CYCLES         # next deadline, computed from the previous one
 
 The edge lands at a fixed offset from the deadline whatever the code in between did, as long as it finished before the deadline. Errors never accumulate, because each deadline is derived from the previous deadline, not from "now". `WAIT_PIN` returns the time of the input edge, so receivers can sample in the middle of each bit by adding offsets to that timestamp.
 
-Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The shortest bit period the demo loop sustains is between 41 and 48 cycles (48 passes, 40 fails), i.e. about 1 Mbaud at a 50 MHz clock.
+Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The shortest bit period the demo loop sustains is between 41 and 48 cycles (48 passes, 40 fails), i.e. about 830 kbaud at a 40 MHz clock.
 
 ## Demo programs
 
@@ -54,9 +54,9 @@ All three are in `firmware/` and are tested end to end in `test/test.py` against
 
 | Program | Pins | What it does | Measured in simulation |
 |---|---|---|---|
-| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | every edge on the bit grid; works down to 48 cycles/bit (~1 Mbaud at 50 MHz) |
+| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | every edge on the bit grid; works down to 48 cycles/bit (~830 kbaud at 40 MHz) |
 | `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; works down to `SPI_HALF=16` |
-| `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; SCL low ≥ ~77 cycles (code time): ~100 kHz by default, ~380 kHz at most at 50 MHz |
+| `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; SCL low ≥ ~77 cycles (code time): ~100 kHz by default, ~300 kHz at most at 40 MHz |
 
 I2C uses `PIN_DIR` for open drain: the output value stays 0 and the pin is either driven low (output enabled) or released (input), with external pull-ups. After releasing SCL the program waits with `WAIT_PIN` until the line is actually high, which handles clock stretching, and re-anchors its deadlines on that moment.
 
@@ -74,8 +74,8 @@ When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip 
 - Single-threaded: one protocol loop at a time; the UART echo cannot receive while transmitting.
 - `WAIT_PIN` has no timeout yet.
 - Outputs reset to 0, so an active-low chip select is asserted until the program sets it. A configurable reset value is a candidate fix.
-- I2C fast mode (400 kHz) is not reached at 50 MHz; the bit loop needs optimising or a faster clock.
-- Area and maximum clock are estimates until the GDS flow runs (generic synthesis: ~15k cells, ~5.2k flip-flops, most of them memory).
+- I2C fast mode (400 kHz) is not reached at 40 MHz (about 300 kHz at most); the bit loop needs optimising.
+- First GDS run (50 MHz target): full layout completed at about 43% utilisation, but setup timing failed post-route in the slow corner (1.08 V, 125 °C), after about 5,200 hold buffers were inserted, mostly around the flip-flop memory. Target lowered to 40 MHz. A latch-based memory would cut area, run time and hold fixing.
 
 ## Roadmap
 

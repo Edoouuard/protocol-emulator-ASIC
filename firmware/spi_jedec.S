@@ -5,7 +5,8 @@
  *
  * Pins: SCK = uo_out[1], MOSI = uo_out[2], CS_n = uo_out[3], MISO = ui_in[1].
  * SPI_MODE (0-3) selects clock polarity and phase at build time.
- * SPI_HALF = half an SCK period, in clock cycles.
+ * SPI_HALF = half an SCK period, in clock cycles. The timing checker proves
+ * every edge on time for SPI_HALF >= 77 (about 260 kHz at 40 MHz).
  */
 #include "pinv.h"
 
@@ -13,7 +14,7 @@
 #define SPI_MODE 0
 #endif
 #ifndef SPI_HALF
-#define SPI_HALF 48
+#define SPI_HALF 80
 #endif
 
 #define CPOL ((SPI_MODE >> 1) & 1)
@@ -54,11 +55,12 @@ _start:
  * Clobbers a1, a3, a4, a5, t0, t1.
  */
 spi_xfer:
+    PINV_BUDGET(SPI_HALF)
     li   t1, SPI_HALF
     li   a5, 8
     li   a4, 0
     TIME(t0)
-    addi t0, t0, 32
+    add  t0, t0, t1               /* first edge half a period from now */
 3:  srli a3, a0, 7
     andi a3, a3, 1
     slli a3, a3, 2                /* MOSI position */

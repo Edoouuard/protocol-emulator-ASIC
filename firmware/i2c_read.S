@@ -12,7 +12,8 @@
  * I2C_Q = a quarter of an SCL period, in clock cycles. Measured in
  * simulation: SCL high = 2*I2C_Q + about 14 cycles; SCL low is at least
  * about 77 cycles (code time).  I2C_Q = 94 gives about 100 kHz at 40 MHz;
- * the fastest setting reaches about 300 kHz at 40 MHz.
+ * the smallest setting the timing checker proves is I2C_Q = 54
+ * (about 160 kHz at 40 MHz).
  */
 #include "pinv.h"
 
@@ -54,10 +55,9 @@
     PIN_DIR(zero, zero, a1)
     WAIT_PIN(s0, a1, a1)
 .endm
-/* Start a new timing anchor a few cycles from now. */
+/* Start a new timing anchor now; the next TICK is one quarter period later. */
 .macro ANCHOR
     TIME(s0)
-    addi s0, s0, 16
 .endm
 
     .section .text.start
@@ -93,8 +93,9 @@ done:
 
 /* START: SDA falls while SCL is high. Bus assumed idle (both released). */
 i2c_start:
+    PINV_BUDGET(I2C_Q)
     ANCHOR
-    WAIT_UNTIL(zero, s0)
+    TICK
     SDA_LOW
     TICK 2
     SCL_LOW
@@ -102,6 +103,7 @@ i2c_start:
 
 /* Repeated START, from SCL low after an ACK. */
 i2c_rstart:
+    PINV_BUDGET(I2C_Q)
     ANCHOR
     TICK
     SDA_REL
@@ -115,6 +117,7 @@ i2c_rstart:
 
 /* STOP: SDA rises while SCL is high. Called with SCL low. */
 i2c_stop:
+    PINV_BUDGET(I2C_Q)
     ANCHOR
     TICK
     SDA_LOW
@@ -130,6 +133,7 @@ i2c_stop:
  * valid anchor in s0. Return address in t1 (so callers keep ra).
  */
 i2c_bit:
+    PINV_BUDGET(I2C_Q)
     TICK                          /* middle of SCL low: change SDA */
     xori a3, a3, 1                /* level 0 -> output enable 1 */
     slli a3, a3, 8
@@ -146,6 +150,7 @@ i2c_bit:
 
 /* Write the byte in a0. Returns a0 = 0 on ACK, 1 on NACK. Called with SCL low. */
 i2c_write:
+    PINV_BUDGET(I2C_Q)
     ANCHOR
     li   a5, 8
 1:  srli a3, a0, 7
@@ -161,6 +166,7 @@ i2c_write:
 
 /* Read a byte into a0. Argument a0 = 1 to answer NACK (last byte), 0 for ACK. */
 i2c_read:
+    PINV_BUDGET(I2C_Q)
     mv   t2, a0
     ANCHOR
     li   a4, 0

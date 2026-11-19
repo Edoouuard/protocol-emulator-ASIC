@@ -12,3 +12,6 @@ test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
 firmware/build/
+tools/timing/sim_build/
+tools/timing/results.xml
+__pycache__/

@@ -46,7 +46,23 @@ t += BIT_CYCLES         # next deadline, computed from the previous one
 
 The edge lands at a fixed offset from the deadline whatever the code in between did, as long as it finished before the deadline. Errors never accumulate, because each deadline is derived from the previous deadline, not from "now". `WAIT_PIN` returns the time of the input edge, so receivers can sample in the middle of each bit by adding offsets to that timestamp.
 
-Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The shortest bit period the demo loop sustains is between 41 and 48 cycles (48 passes, 40 fails), i.e. about 830 kbaud at a 40 MHz clock.
+Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The timing checker below proves the demo for any bit period of at least 44 cycles, about 900 kbaud at a 40 MHz clock.
+
+## Proven timing: pinv_check
+
+A deadline-anchored program is only correct if the code between an anchor and the next `WAIT_UNTIL` always finishes before the deadline. Tests can show that it did on the paths they ran. `tools/pinv_check.py` proves that it does on every path, before the program is loaded:
+
+1. It rebuilds the control-flow graph of the linked program, including calls and returns through any link register.
+2. For every anchor (`TIME`, `WAIT_UNTIL`, `WAIT_PIN`) it explores every path to each `WAIT_UNTIL` reachable without another anchor, and computes the worst-case cycle count with a cost model of PinV's PicoRV32 calibrated on the RTL (`tools/timing/`).
+3. It compares that worst case with the budget the source declares with `PINV_BUDGET(cycles)` (stored in a section that is not loaded on the chip). A loop without a bound between an anchor and a deadline is an error.
+
+The firmware build runs it on every program: if a deadline can be missed, no binary is produced. CI does the same.
+
+What it found on the demos: the SPI demo asked for 48-cycle half periods, but one path through the bit loop takes 77 cycles. SPI is clocked by the master, so the tests still passed, at a slower SCK than requested. The default is now 80.
+
+Validation on the RTL: at the smallest budget the checker proves for each demo, the simulation shows no missed deadline; one cycle less, it shows a miss. Details in `tools/timing/README.md`.
+
+Scope and assumptions: the cost model holds for PinV's configuration (single-cycle memory, no interrupts); `WAIT_PIN` waits for an input and has no deadline, so only `WAIT_UNTIL` deadlines are checked; indirect calls are rejected.
 
 ## Demo programs
 
@@ -54,9 +70,9 @@ All three are in `firmware/` and are tested end to end in `test/test.py` against
 
 | Program | Pins | What it does | Measured in simulation |
 |---|---|---|---|
-| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | every edge on the bit grid; works down to 48 cycles/bit (~830 kbaud at 40 MHz) |
-| `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; works down to `SPI_HALF=16` |
-| `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; SCL low ≥ ~77 cycles (code time): ~100 kHz by default, ~300 kHz at most at 40 MHz |
+| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | timing proven for ≥ 44 cycles per bit (~900 kbaud at 40 MHz) |
+| `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; timing proven for `SPI_HALF` ≥ 77 (~260 kHz at 40 MHz) |
+| `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; timing proven for `I2C_Q` ≥ 54 (~160 kHz at 40 MHz); default ~100 kHz |
 
 I2C uses `PIN_DIR` for open drain: the output value stays 0 and the pin is either driven low (output enabled) or released (input), with external pull-ups. After releasing SCL the program waits with `WAIT_PIN` until the line is actually high, which handles clock stretching, and re-anchors its deadlines on that moment.
 
@@ -74,7 +90,7 @@ When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip 
 - Single-threaded: one protocol loop at a time; the UART echo cannot receive while transmitting.
 - `WAIT_PIN` has no timeout yet.
 - Outputs reset to 0, so an active-low chip select is asserted until the program sets it. A configurable reset value is a candidate fix.
-- I2C fast mode (400 kHz) is not reached at 40 MHz (about 300 kHz at most); the bit loop needs optimising.
+- I2C fast mode (400 kHz) is not reached at 40 MHz (about 160 kHz with proven timing); the bit loop needs optimising.
 - First GDS run (50 MHz target): full layout completed at about 43% utilisation, but setup timing failed post-route in the slow corner (1.08 V, 125 °C), after about 5,200 hold buffers were inserted, mostly around the flip-flop memory. Target lowered to 40 MHz. A latch-based memory would cut area, run time and hold fixing.
 
 ## Roadmap

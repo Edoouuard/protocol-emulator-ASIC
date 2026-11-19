@@ -10,6 +10,8 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
+from deadline_monitor import DeadlineMonitor
+
 PROGRAMS = Path(__file__).parent / "programs"
 
 # Must match the BIT_CYCLES the program was built with (see programs/README.md).
@@ -135,6 +137,7 @@ async def test_uart_hello_and_echo(dut):
     dut._log.info(f"loading {len(image)} bytes")
 
     rec = EdgeRecorder(dut, 0)
+    mon = DeadlineMonitor(dut)
     await load_program(dut, image)
 
     # 6 characters + start-up margin: wait for the whole message to finish.
@@ -154,6 +157,8 @@ async def test_uart_hello_and_echo(dut):
     dut._log.info(f"echo {echo!r}")
     assert echo == b"PinV", f"unexpected echo {echo!r}"
     assert set(widths) == {0}, f"echo edges off the bit grid: {sorted(set(widths))}"
+    assert not mon.misses, f"missed deadlines: {mon.misses}"
+    dut._log.info(f"deadlines: worst observed segments {mon.segments}")
 
 
 @cocotb.test()
@@ -165,10 +170,11 @@ async def test_reload(dut):
     await load_program(dut, image)
     await ClockCycles(dut.clk, UART_BIT_CYCLES * 15)  # interrupt mid-message
 
-    rec = EdgeRecorder(dut, 0)
     await load_program(dut, image)
-    await ClockCycles(dut.clk, UART_BIT_CYCLES * 10 * 7)
-    # Skip edges recorded before the core restarted (line forced low by reset).
+    # Record from the restart: the line is low while the core is in reset,
+    # then goes idle (high) when the new program starts.
+    rec = EdgeRecorder(dut, 0)
+    await ClockCycles(dut.clk, UART_BIT_CYCLES * 10 * 8)
     text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
     assert text.endswith(b"Hello\n"), f"unexpected output after reload {text!r}"
 
@@ -234,6 +240,7 @@ async def run_spi_mode(dut, mode):
     set_ui_bit(dut, 0, 1)
     rec = EdgeRecorder(dut, 0)
     flash = SpiFlash(dut, mode, [0x00] + SPI_JEDEC_ID)
+    mon = DeadlineMonitor(dut)
     await load_program(dut, (PROGRAMS / f"spi_jedec_mode{mode}.bin").read_bytes())
     await ClockCycles(dut.clk, 9000)
     text, widths = decode_uart(rec.edges, UART_BIT_CYCLES)
@@ -242,6 +249,8 @@ async def run_spi_mode(dut, mode):
     assert list(text) == SPI_JEDEC_ID, f"bad ID printed {text.hex()}"
     assert set(widths) == {0}
     assert flash.idle_errors == 0, "SCK not at idle level after deselect"
+    assert not mon.misses, f"missed deadlines: {mon.misses}"
+    dut._log.info(f"deadlines: worst observed segments {mon.segments}")
 
 
 @cocotb.test()
@@ -272,7 +281,7 @@ async def test_spi_mode3(dut):
 # I2C: simulated device with one register, open-drain bus, clock stretching
 # ---------------------------------------------------------------------------
 
-I2C_Q = 32  # must match the I2C_Q the program was built with
+I2C_Q = 56  # must match the I2C_Q the program was built with
 
 
 class I2cDevice:
@@ -377,8 +386,9 @@ async def test_i2c_register_read(dut):
     set_ui_bit(dut, 0, 1)
     rec = EdgeRecorder(dut, 0)
     dev = I2cDevice(dut, 0x68, {0x75: 0x71}, stretch=200)
+    mon = DeadlineMonitor(dut)
     await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
-    await ClockCycles(dut.clk, 9000)
+    await ClockCycles(dut.clk, 250 * I2C_Q + 2000)  # 4 bytes of 9 clocks, 4 quarters each
     text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
     dut._log.info(f"I2C log {dev.log}, UART {text.hex()}")
     assert dev.log == [
@@ -391,6 +401,8 @@ async def test_i2c_register_read(dut):
     lows = [b[0] - a[0] for a, b in zip(dev.scl_edges, dev.scl_edges[1:]) if a[1] == 0]
     dut._log.info(f"SCL high {min(highs)}-{max(highs)} cycles, low {min(lows)}-{max(lows)} cycles")
     assert min(highs) >= 2 * I2C_Q, "SCL high time shorter than the requested half period"
+    assert not mon.misses, f"missed deadlines: {mon.misses}"
+    dut._log.info(f"deadlines: worst observed segments {mon.segments}")
 
 
 @cocotb.test()

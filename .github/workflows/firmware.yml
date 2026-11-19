@@ -1,0 +1,15 @@
+name: firmware
+
+on: [push, pull_request]
+
+jobs:
+  timing-proof:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the RISC-V GNU toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf
+      - name: Build every demo and prove its timing
+        run: make -C firmware
+      - name: Prove every SPI mode
+        run: for m in 0 1 2 3; do make -C firmware clean; make -C firmware SPI_MODE=$m build/spi_jedec.bin; done

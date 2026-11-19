@@ -24,6 +24,16 @@
 /* stall until (pins & mask) == (level & mask); rd = counter */
 #define WAIT_PIN(rd, mask, level) .insn r 0x0B, 5, 0, rd, mask, level
 
+/*
+ * Timing budget, read by tools/pinv_check.py (not loaded on the chip).
+ * Declares that, from here until the next PINV_BUDGET, every deadline given
+ * to WAIT_UNTIL is at least `cycles` after the most recent timing anchor
+ * (WAIT_UNTIL, WAIT_PIN or TIME). The checker proves that the code between
+ * each anchor and the next WAIT_UNTIL always fits in that budget.
+ */
+#define PINV_BUDGET(cycles) \
+    .pushsection .pinv.budget, "", @progbits ; .word 0f, (cycles) ; .popsection ; 0:
+
 #else
 
 #include <stdint.h>

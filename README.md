@@ -6,6 +6,8 @@ Entry for the [Jane Street × Tiny Tapeout Protocol Emulator ASIC Competition](h
 
 PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V core (RV32EC) plus six pin and deadline instructions. Protocols are written as ordinary programs and built with the standard RISC-V GNU toolchain; every edge is anchored on an absolute cycle-counter deadline, so bit timing is exact.
 
+**Timing is proven, not just tested.** `tools/pinv_check.py` analyses every path of a program and proves, before it is loaded, that no deadline can be missed. The build refuses a program it cannot prove. Its cost model is calibrated on the RTL and matches the simulation to the cycle.
+
 - Target: IHP 130 nm CMOS5L via Tiny Tapeout, 8x4 tiles.
 - Architecture, instruction set and timing model: [`docs/architecture.md`](docs/architecture.md)
 - Datasheet: [`docs/info.md`](docs/info.md)
@@ -19,6 +21,7 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 | UART TX + RX echo demo, cycle-exact in simulation | ✅ |
 | SPI master demo (JEDEC ID read), modes 0-3 | ✅ |
 | I2C master demo (register read, repeated START, clock stretching, NACK) | ✅ |
+| Static timing proof of every program (`pinv_check`), validated on the RTL | ✅ |
 | GDS + precheck passing | ⏳ first run pending |
 | Base ISA tests, gate-level simulation | ⏳ |
 | Write-up | ⏳ |
@@ -28,6 +31,7 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 ```
 src/            RTL: top level, pin/timing unit, loader, PicoRV32 (vendored)
 firmware/       pinv.h (instruction macros), demo programs, linker script
+tools/          pinv_check.py (timing proof); timing/ (cost-model calibration on the RTL)
 test/           cocotb tests; test/programs holds prebuilt binaries
 docs/           architecture, datasheet
 third_party/    licenses of reused code
@@ -48,6 +52,8 @@ Requires Icarus Verilog. The repository includes a dev container (GitHub Codespa
 ```bash
 make -C firmware BIT_CYCLES=347   # e.g. 40 MHz / 115200 baud
 ```
+
+Each program is linked, then checked by `tools/pinv_check.py`; the binary is only produced if every deadline is proven. Programs declare their timing budget with `PINV_BUDGET(cycles)` (see `firmware/pinv.h`).
 
 Requires `riscv64-unknown-elf-gcc` (any RISC-V GNU toolchain with RV32E support).
 

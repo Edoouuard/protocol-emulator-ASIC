@@ -25,13 +25,14 @@ uart_init:
 
 /* Send the byte in a0. */
 uart_tx:
+    PINV_BUDGET(BIT_CYCLES)
     li   t1, BIT_CYCLES
     li   t2, 1              /* TX mask = bit 0 */
     ori  a0, a0, 0x100      /* stop bit (1) above the 8 data bits */
     slli a0, a0, 1          /* start bit (0) in bit 0 */
     li   a5, 10             /* start + 8 data + stop */
     TIME(t0)
-    addi t0, t0, 32         /* first edge 32 cycles from now */
+    add  t0, t0, t1         /* first edge one bit period from now */
 1:  WAIT_UNTIL(zero, t0)
     PIN_OUT(zero, a0, t2)   /* drive bit 0 of a0 on TX */
     srli a0, a0, 1
@@ -43,6 +44,7 @@ uart_tx:
 
 /* Receive a byte into a0. */
 uart_rx:
+    PINV_BUDGET(BIT_CYCLES)
     li   t1, BIT_CYCLES
     li   t2, 1              /* RX = ui_in[0] */
     WAIT_PIN(zero, t2, t2)  /* line idle (high) first */

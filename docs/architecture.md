@@ -91,7 +91,7 @@ When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip 
 - `WAIT_PIN` has no timeout yet.
 - Outputs reset to 0, so an active-low chip select is asserted until the program sets it. A configurable reset value is a candidate fix.
 - I2C fast mode (400 kHz) is not reached at 40 MHz (about 160 kHz with proven timing); the bit loop needs optimising.
-- First GDS run (50 MHz target): full layout completed at about 43% utilisation, but setup timing failed post-route in the slow corner (1.08 V, 125 °C), after about 5,200 hold buffers were inserted, mostly around the flip-flop memory. Target lowered to 40 MHz. A latch-based memory would cut area, run time and hold fixing.
+- First GDS run (50 MHz target): full layout completed at about 43% utilisation, but setup timing failed post-route in the slow corner (1.08 V, 125 °C), after about 5,200 hold buffers were inserted, mostly around the flip-flop memory. Target lowered to 40 MHz (`CLOCK_PERIOD` = 25 ns in `src/config.json`, which sets the timing constraint; `clock_hz` in `info.yaml` is documentation only). A latch-based memory would cut area, run time and hold fixing.
 
 ## Roadmap
 

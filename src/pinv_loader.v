@@ -57,4 +57,8 @@ module pinv_loader (
         end
     end
 
+`ifdef PINV_LOADER_FORMAL
+`include "pinv_loader_props.vh"
+`endif
+
 endmodule

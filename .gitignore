@@ -15,3 +15,8 @@ firmware/build/
 tools/timing/sim_build/
 tools/timing/results.xml
 __pycache__/
+formal/*_prove/
+formal/*_cover/
+formal/pinv_io/
+formal/pinv_loader/
+formal/top/

@@ -64,6 +64,22 @@ Validation on the RTL: at the smallest budget the checker proves for each demo, 
 
 Scope and assumptions: the cost model holds for PinV's configuration (single-cycle memory, no interrupts); `WAIT_PIN` waits for an input and has no deadline, so only `WAIT_UNTIL` deadlines are checked; indirect calls are rejected.
 
+## Formal proof of the hardware
+
+`pinv_check` assumes the hardware keeps its contract (for instance, that `WAIT_UNTIL` releases the core exactly at the deadline). That contract is proven with SymbiYosys and Z3 (`formal/`, `make -C formal`), by k-induction, for every reachable state and every input sequence:
+
+| Module | Proven |
+|---|---|
+| `pinv_io` | counter advances by exactly 1 per cycle; exactly one answer per instruction; every instruction completes in the cycle right after its condition holds; **zero jitter**: a `WAIT_UNTIL` whose deadline is in the future releases when the counter equals the deadline; `WAIT_*`/`TIME` return the release cycle; `PIN_OUT` changes exactly the masked bits one cycle later, and nothing else changes the outputs; only `PIN_DIR` changes directions; reset state |
+| `pinv_loader` | writes only in load mode after the 8th SCK edge; each load starts at address 0; addresses advance by exactly one per byte; the written byte is the one shifted in |
+| top level | the loader never writes memory while the core runs; the core is held in reset while LOAD is high and released when it falls |
+
+The PicoRV32 side of the PCPI handshake is modelled by assumptions (operands stable while waiting, request kept while told to wait, dropped after the answer). For the top level, PicoRV32 is replaced by a stand-in with completely free outputs (`formal/picorv32_free.v`), which over-approximates any behaviour of the real core.
+
+Covers show that the key situations are reachable (no vacuous proof). Mutation check: three injected bugs (release one cycle early, ignore the `PIN_OUT` mask, answer twice) each make the proof fail on the expected property.
+
+Together: the formal proof establishes the hardware timing contract; `pinv_check` proves each program respects it.
+
 ## Demo programs
 
 All three are in `firmware/` and are tested end to end in `test/test.py` against simulated devices.

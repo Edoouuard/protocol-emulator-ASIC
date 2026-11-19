@@ -6,7 +6,7 @@ Entry for the [Jane Street × Tiny Tapeout Protocol Emulator ASIC Competition](h
 
 PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V core (RV32EC) plus six pin and deadline instructions. Protocols are written as ordinary programs and built with the standard RISC-V GNU toolchain; every edge is anchored on an absolute cycle-counter deadline, so bit timing is exact.
 
-**Timing is proven, not just tested.** `tools/pinv_check.py` analyses every path of a program and proves, before it is loaded, that no deadline can be missed. The build refuses a program it cannot prove. Its cost model is calibrated on the RTL and matches the simulation to the cycle.
+**Timing is proven, not just tested.** The hardware timing contract (zero-jitter `WAIT_UNTIL`, exact `PIN_OUT`, safe loading) is proven formally with SymbiYosys (`formal/`). On top of it, `tools/pinv_check.py` analyses every path of a program and proves, before it is loaded, that no deadline can be missed. The build refuses a program it cannot prove. Its cost model is calibrated on the RTL and matches the simulation to the cycle.
 
 - Target: IHP 130 nm CMOS5L via Tiny Tapeout, 8x4 tiles.
 - Architecture, instruction set and timing model: [`docs/architecture.md`](docs/architecture.md)
@@ -22,6 +22,7 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 | SPI master demo (JEDEC ID read), modes 0-3 | ✅ |
 | I2C master demo (register read, repeated START, clock stretching, NACK) | ✅ |
 | Static timing proof of every program (`pinv_check`), validated on the RTL | ✅ |
+| Formal proof of the pin/timing unit, loader and top level (SymbiYosys) | ✅ |
 | GDS + precheck passing | ⏳ first run pending |
 | Base ISA tests, gate-level simulation | ⏳ |
 | Write-up | ⏳ |
@@ -32,6 +33,8 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 src/            RTL: top level, pin/timing unit, loader, PicoRV32 (vendored)
 firmware/       pinv.h (instruction macros), demo programs, linker script
 tools/          pinv_check.py (timing proof); timing/ (cost-model calibration on the RTL)
+formal/         SymbiYosys proofs of the hardware (make -C formal)
+docs/journal.md step-by-step build log, in French
 test/           cocotb tests; test/programs holds prebuilt binaries
 docs/           architecture, datasheet
 third_party/    licenses of reused code

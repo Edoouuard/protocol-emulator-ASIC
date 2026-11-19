@@ -126,6 +126,10 @@ module tt_um_edoouuard_protoemu #(
     assign uio_out = pins_out[15:8];
     assign uio_oe  = oe;
 
+`ifdef PINV_TOP_FORMAL
+`include "top_props.vh"
+`endif
+
     wire _unused = &{ena, mem_instr, mem_addr[31:AW+2], mem_addr[1:0], ld_addr[15:AW+2], 1'b0};
 
 endmodule

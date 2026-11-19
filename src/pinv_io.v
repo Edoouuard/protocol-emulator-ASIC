@@ -125,4 +125,8 @@ module pinv_io (
         end
     end
 
+`ifdef PINV_IO_FORMAL
+`include "pinv_io_props.vh"
+`endif
+
 endmodule

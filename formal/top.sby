@@ -1,6 +1,7 @@
-# Formal proof of the PinV top level (loading and core reset). PicoRV32 is
-# replaced by a stand-in whose outputs are completely free (picorv32_free.v),
-# which over-approximates the real core; the memory is reduced to 4 words,
+# Formal proof of the PinV top level (loading and core reset). PicoRV32 and the
+# pin/timing unit are replaced by stand-ins whose outputs are completely free
+# (picorv32_free.v, pinv_io_free.v), which over-approximates both; the unit is
+# proven on its own in pinv_io.sby; the memory is reduced to 4 words,
 # since the properties do not depend on its size.
 [tasks]
 prove
@@ -16,14 +17,14 @@ cover: depth 12
 smtbmc z3
 
 [script]
-read -formal pinv_io.v pinv_loader.v picorv32_free.v
+read -formal pinv_io_free.v pinv_loader.v picorv32_free.v
 read -formal -DPINV_TOP_FORMAL project.v
 chparam -set MEM_WORDS 4 tt_um_edoouuard_protoemu
 prep -top tt_um_edoouuard_protoemu
 
 [files]
 ../src/project.v
-../src/pinv_io.v
+pinv_io_free.v
 ../src/pinv_loader.v
 picorv32_free.v
 top_props.vh

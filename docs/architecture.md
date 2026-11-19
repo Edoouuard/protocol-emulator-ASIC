@@ -32,6 +32,17 @@ R-type, opcode custom-0 (`0x0B`), selected by funct3. Emitted with `.insn` throu
 | 4 | `WAIT_UNTIL rd, deadline` | stall until counter reaches deadline; rd ← counter |
 | 5 | `WAIT_PIN rd, mask, level` | stall until (pins & mask) == (level & mask); rd ← counter (timestamp) |
 
+Timer and fused shift instructions (funct3 = 6 and 7, variant in funct7). The unit keeps an internal deadline and step, so a periodic signal costs one instruction per bit:
+
+| funct3/funct7 | Instruction | Effect |
+|---|---|---|
+| 6/0 | `SET_TIMER start, step` | deadline ← start; step ← step[15:0] |
+| 6/1 | `WAIT_TICK rd` | stall until the deadline; deadline += step; rd ← counter |
+| 7/0 | `SHIFT_OUT rd, data, idx` | at the deadline, output pin idx ← data[0]; rd ← data >> 1; deadline += step |
+| 7/2 | `SHIFT_OUTM rd, data, idx` | same, MSB first: pin ← data[31]; rd ← data << 1 |
+| 7/1 | `SHIFT_IN rd, data, idx` | at the deadline, rd ← {pin idx, data[31:1]}; deadline += step |
+| 7/3 | `SHIFT_INM rd, data, idx` | same, MSB first: rd ← {data[30:0], pin idx} |
+
 Bit map: outputs [7:0] = `uo_out`, [15:8] = `uio_out`; inputs [7:0] = `ui_in`, [15:8] = `uio_in`.
 
 ## Timing model: deadline-anchored I/O
@@ -46,7 +57,7 @@ t += BIT_CYCLES         # next deadline, computed from the previous one
 
 The edge lands at a fixed offset from the deadline whatever the code in between did, as long as it finished before the deadline. Errors never accumulate, because each deadline is derived from the previous deadline, not from "now". `WAIT_PIN` returns the time of the input edge, so receivers can sample in the middle of each bit by adding offsets to that timestamp.
 
-Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The timing checker below proves the demo for any bit period of at least 44 cycles, about 900 kbaud at a 40 MHz clock.
+Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. With the fused `SHIFT_OUT`/`SHIFT_IN` instructions, the timing checker proves the demo for any bit period of at least 18 cycles (about 2.2 Mbaud at 40 MHz), against 44 cycles with separate wait, output and shift instructions.
 
 ## Proven timing: pinv_check
 
@@ -70,13 +81,13 @@ Scope and assumptions: the cost model holds for PinV's configuration (single-cyc
 
 | Module | Proven |
 |---|---|
-| `pinv_io` | counter advances by exactly 1 per cycle; exactly one answer per instruction; every instruction completes in the cycle right after its condition holds; **zero jitter**: a `WAIT_UNTIL` whose deadline is in the future releases when the counter equals the deadline; `WAIT_*`/`TIME` return the release cycle; `PIN_OUT` changes exactly the masked bits one cycle later, and nothing else changes the outputs; only `PIN_DIR` changes directions; reset state |
+| `pinv_io` | internal deadline advances by exactly one step at each `WAIT_TICK`/`SHIFT_*`, is set only by `SET_TIMER`, never drifts; `SHIFT_OUT` drives exactly the selected pin with the outgoing bit; shift results move exactly one bit and sample the selected pin; counter advances by exactly 1 per cycle; exactly one answer per instruction; every instruction completes in the cycle right after its condition holds; **zero jitter**: a `WAIT_UNTIL`, `WAIT_TICK` or `SHIFT_*` whose deadline is in the future releases when the counter equals the deadline; `WAIT_*`/`TIME` return the release cycle; `PIN_OUT` changes exactly the masked bits one cycle later, and nothing else changes the outputs; only `PIN_DIR` changes directions; reset state |
 | `pinv_loader` | writes only in load mode after the 8th SCK edge; each load starts at address 0; addresses advance by exactly one per byte; the written byte is the one shifted in |
 | top level | the loader never writes memory while the core runs; the core is held in reset while LOAD is high and released when it falls |
 
-The PicoRV32 side of the PCPI handshake is modelled by assumptions (operands stable while waiting, request kept while told to wait, dropped after the answer). For the top level, PicoRV32 is replaced by a stand-in with completely free outputs (`formal/picorv32_free.v`), which over-approximates any behaviour of the real core.
+The PicoRV32 side of the PCPI handshake is modelled by assumptions (operands stable while waiting, request kept while told to wait, dropped after the answer). For the top level, PicoRV32 and the pin/timing unit are replaced by stand-ins with completely free outputs (`formal/picorv32_free.v`, `formal/pinv_io_free.v`), which over-approximate any behaviour of both; the unit is proven on its own.
 
-Covers show that the key situations are reachable (no vacuous proof). Mutation check: three injected bugs (release one cycle early, ignore the `PIN_OUT` mask, answer twice) each make the proof fail on the expected property.
+Covers show that the key situations are reachable (no vacuous proof). Mutation check: six injected bugs (release one cycle early, ignore the `PIN_OUT` mask, answer twice, a `SHIFT` that does not advance the deadline, `SHIFT_OUT` on the wrong pin, a tick released one cycle early) each make the proof fail on the expected property, with a concrete counterexample from bounded model checking.
 
 Together: the formal proof establishes the hardware timing contract; `pinv_check` proves each program respects it.
 
@@ -86,7 +97,7 @@ All three are in `firmware/` and are tested end to end in `test/test.py` against
 
 | Program | Pins | What it does | Measured in simulation |
 |---|---|---|---|
-| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | timing proven for ≥ 44 cycles per bit (~900 kbaud at 40 MHz) |
+| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | timing proven for ≥ 18 cycles per bit (~2.2 Mbaud at 40 MHz), with `SHIFT_OUT`/`SHIFT_IN`; 44 cycles with the separate `WAIT_UNTIL` + `PIN_OUT` version |
 | `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; timing proven for `SPI_HALF` ≥ 77 (~260 kHz at 40 MHz) |
 | `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; timing proven for `I2C_Q` ≥ 54 (~160 kHz at 40 MHz); default ~100 kHz |
 

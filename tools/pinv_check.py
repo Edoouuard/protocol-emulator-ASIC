@@ -20,6 +20,9 @@ This tool proves, before the program is loaded, that it can never happen:
     PINV_BUDGET(cycles), and fails if any path can exceed it, or if a loop
     without a bound sits between an anchor and a deadline.
 
+Deadline waits are WAIT_UNTIL and the timer instructions (WAIT_TICK, SHIFT_*),
+whose deadline is the internal one, advanced by the step at each of them.
+
 Usage:  pinv_check.py program.elf [--verbose]      exit code 0 = proven, 1 = not
         pinv_check.py --model                       print the cost model
 """
@@ -67,7 +70,11 @@ ALU_IMM_OPS = {"addi", "andi", "ori", "xori", "slti", "sltiu", "lui", "auipc",
                "c.li", "c.lui", "c.addi", "c.andi", "c.addi16sp", "c.addi4spn", "c.nop"}
 
 CUSTOM = {0: "PIN_OUT", 1: "PIN_IN", 2: "PIN_DIR", 3: "TIME", 4: "WAIT_UNTIL", 5: "WAIT_PIN"}
-ANCHORS = {"TIME", "WAIT_UNTIL", "WAIT_PIN"}
+TIMER = {0: "SET_TIMER", 1: "WAIT_TICK"}
+SHIFT = {0: "SHIFT_OUT", 1: "SHIFT_IN", 2: "SHIFT_OUTM", 3: "SHIFT_INM"}
+# Instructions that wait for a deadline: they end a timed segment, and start the next one.
+DEADLINE_WAITS = {"WAIT_UNTIL", "WAIT_TICK", "SHIFT_OUT", "SHIFT_IN", "SHIFT_OUTM", "SHIFT_INM"}
+ANCHORS = {"TIME", "WAIT_PIN"} | DEADLINE_WAITS
 
 
 class Insn:
@@ -77,7 +84,15 @@ class Insn:
         self.word = int(raw, 16)
         self.custom = None
         if self.size == 4 and (self.word & 0x7F) == 0x0B:
-            self.custom = CUSTOM.get((self.word >> 12) & 7, "CUSTOM?")
+            f3, f7 = (self.word >> 12) & 7, self.word >> 25
+            if f3 == 6:
+                self.custom = TIMER.get(f7, "CUSTOM?")
+            elif f3 == 7:
+                self.custom = SHIFT.get(f7, "CUSTOM?")
+            else:
+                self.custom = CUSTOM.get(f3, "CUSTOM?")
+            if self.custom == "CUSTOM?":
+                raise SystemExit(f"pinv_check: unknown custom instruction 0x{self.word:08x} at 0x{addr:x}")
             self.mnem = self.custom
 
     @property
@@ -246,7 +261,7 @@ def check(elf, verbose=False, report=None):
         for t, _ in outs:
             preds[t].add(a)
     leads = set()
-    stack = [a for a, i in insns.items() if i.mnem == "WAIT_UNTIL"]
+    stack = [a for a, i in insns.items() if i.mnem in DEADLINE_WAITS]
     while stack:
         a = stack.pop()
         if a in leads:
@@ -255,7 +270,7 @@ def check(elf, verbose=False, report=None):
         for p in preds[a]:
             if insns[p].mnem not in ANCHORS:
                 stack.append(p)
-    waits = [a for a, i in insns.items() if i.mnem == "WAIT_UNTIL"]
+    waits = [a for a, i in insns.items() if i.mnem in DEADLINE_WAITS]
     for anc in anchors:
         for target in waits:
             # Longest path from the anchor's completion to this WAIT_UNTIL, without

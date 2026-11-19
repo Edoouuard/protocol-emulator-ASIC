@@ -24,6 +24,19 @@
 /* stall until (pins & mask) == (level & mask); rd = counter */
 #define WAIT_PIN(rd, mask, level) .insn r 0x0B, 5, 0, rd, mask, level
 
+/* Internal timer: deadline = start, step = step (cycles, 16 bits) */
+#define SET_TIMER(start, step)    .insn r 0x0B, 6, 0, zero, start, step
+/* stall until counter reaches the deadline, then deadline += step; rd = counter */
+#define WAIT_TICK(rd)             .insn r 0x0B, 6, 1, rd, zero, zero
+/* at the deadline: output pin[idx] = data[0] (LSB first);  rd = data >> 1; deadline += step */
+#define SHIFT_OUT(rd, data, idx)  .insn r 0x0B, 7, 0, rd, data, idx
+/* at the deadline: output pin[idx] = data[31] (MSB first); rd = data << 1; deadline += step */
+#define SHIFT_OUTM(rd, data, idx) .insn r 0x0B, 7, 2, rd, data, idx
+/* at the deadline: rd = {pin[idx], data[31:1]} (LSB first); deadline += step */
+#define SHIFT_IN(rd, data, idx)   .insn r 0x0B, 7, 1, rd, data, idx
+/* at the deadline: rd = {data[30:0], pin[idx]} (MSB first); deadline += step */
+#define SHIFT_INM(rd, data, idx)  .insn r 0x0B, 7, 3, rd, data, idx
+
 /*
  * Timing budget, read by tools/pinv_check.py (not loaded on the chip).
  * Declares that, from here until the next PINV_BUDGET, every deadline given

@@ -8,8 +8,14 @@
 // not just for the cases a test happens to run.
 
     wire [2:0]  f3      = funct3;
-    wire        f_mine  = pcpi_valid && pcpi_insn[6:0] == 7'b0001011 && f3 <= F_WAIT_PIN;
+    wire [6:0]  f7      = funct7;
+    wire        f_known = f3 <= F_WAIT_PIN || (f3 == F_TIMER && f7[6:1] == 6'd0)
+                       || (f3 == F_SHIFT && f7[6:2] == 5'd0);
+    wire        f_mine  = pcpi_valid && pcpi_insn[6:0] == 7'b0001011 && f_known;
     wire        pending = f_mine && !pcpi_ready;
+    // Instructions that wait for the internal deadline: WAIT.TICK and every SHIFT.
+    wire        f_tick  = (f3 == F_TIMER && f7[0]) || f3 == F_SHIFT;
+    wire        f_set   = f3 == F_TIMER && !f7[0];
 
     function f_before(input [31:0] a, input [31:0] b);
         reg [31:0] d;
@@ -45,7 +51,7 @@
             f_busy <= 1'b0;
         end else if (!f_busy) begin
             f_busy   <= 1'b1;
-            f_future <= f_before(counter, pcpi_rs1);
+            f_future <= f_before(counter, f_tick ? deadline : pcpi_rs1);
         end
     end
 
@@ -68,7 +74,9 @@
         // P3. Exact completion: an instruction is answered in the cycle right
         // after its condition holds, never earlier and never later.
         if ($past(pending)) begin
-            case ($past(f3))
+            if ($past(f_tick))
+                assert (pcpi_ready == !f_before($past(counter), $past(deadline)));
+            else case ($past(f3))
                 F_WAIT_UNTIL: assert (pcpi_ready == !f_before($past(counter), $past(pcpi_rs1)));
                 F_WAIT_PIN:   assert (pcpi_ready == ((($past(pins_in) ^ $past(pcpi_rs2[15:0])) & $past(pcpi_rs1[15:0])) == 16'd0));
                 default:      assert (pcpi_ready);
@@ -79,16 +87,42 @@
         // started, the core is released exactly when the counter equals it.
         if (pcpi_ready && $past(f3) == F_WAIT_UNTIL && $past(f_busy) && $past(f_future))
             assert ($past(counter) == $past(pcpi_rs1));
+        // Same for the internal deadline (WAIT.TICK and SHIFT).
+        if (pcpi_ready && $past(f_tick) && $past(f_busy) && $past(f_future))
+            assert ($past(counter) == $past(deadline));
 
         // P5. WAIT_UNTIL and WAIT_PIN return the cycle at which they were released; TIME the current cycle.
-        if (pcpi_ready && ($past(f3) == F_WAIT_UNTIL || $past(f3) == F_WAIT_PIN || $past(f3) == F_TIME))
+        if (pcpi_ready && ($past(f3) == F_WAIT_UNTIL || $past(f3) == F_WAIT_PIN || $past(f3) == F_TIME
+                           || ($past(f3) == F_TIMER && $past(f7[0]))))
             assert (pcpi_rd == $past(counter));
+
+        // P9. The internal deadline advances by exactly one step at each WAIT.TICK or
+        // SHIFT, is set only by SET.TIMER, and never changes otherwise: no drift.
+        if (pcpi_ready && $past(f_tick))
+            assert (deadline == $past(deadline) + {16'd0, $past(step)} && step == $past(step));
+        else if (pcpi_ready && $past(f_set))
+            assert (deadline == $past(pcpi_rs1) && step == $past(pcpi_rs2[15:0]));
+        else
+            assert (deadline == $past(deadline) && step == $past(step));
+
+        // P10. Shift results: the data moves by exactly one bit, the sampled bit
+        // comes from the selected pin at the release cycle.
+        if (pcpi_ready && $past(f3) == F_SHIFT) case ($past(f7[1:0]))
+            2'd0: assert (pcpi_rd == {1'b0, $past(pcpi_rs1[31:1])});
+            2'd2: assert (pcpi_rd == {$past(pcpi_rs1[30:0]), 1'b0});
+            2'd1: assert (pcpi_rd == {$past(pins_in[pcpi_rs2[3:0]]), $past(pcpi_rs1[31:1])});
+            2'd3: assert (pcpi_rd == {$past(pcpi_rs1[30:0]), $past(pins_in[pcpi_rs2[3:0]])});
+        endcase
 
         // P6. PIN_OUT updates exactly the masked bits, one cycle after it is accepted...
         if (pcpi_ready && $past(f3) == F_OUT)
             assert (pins_out == (($past(pins_out) & ~$past(pcpi_rs2[15:0])) | ($past(pcpi_rs1[15:0]) & $past(pcpi_rs2[15:0]))));
+        // ...SHIFT.OUT drives exactly one pin, the selected one, with the outgoing bit...
+        if (pcpi_ready && $past(f3) == F_SHIFT && !$past(f7[0]))
+            assert (pins_out == (($past(pins_out) & ~(16'd1 << $past(pcpi_rs2[3:0])))
+                                 | ({15'd0, $past(f7[1]) ? $past(pcpi_rs1[31]) : $past(pcpi_rs1[0])} << $past(pcpi_rs2[3:0]))));
         // ...and nothing else ever changes the outputs.
-        if (!(pcpi_ready && $past(f3) == F_OUT))
+        if (!(pcpi_ready && ($past(f3) == F_OUT || ($past(f3) == F_SHIFT && !$past(f7[0])))))
             assert (pins_out == $past(pins_out));
 
         // P7. Only PIN_DIR changes the pin directions, and only the masked ones.
@@ -111,4 +145,6 @@
         cover (pcpi_ready && $past(f3) == F_WAIT_UNTIL && $past(f_busy) && $past(f_future));
         cover (pcpi_ready && $past(f3) == F_WAIT_PIN);
         cover (pcpi_ready && $past(f3) == F_OUT && pins_out != $past(pins_out));
+        cover (pcpi_ready && $past(f3) == F_SHIFT && $past(f_busy) && $past(f_future) && pins_out != $past(pins_out));
+        cover (pcpi_ready && $past(f3) == F_SHIFT && $past(f7) == 7'd1);
     end

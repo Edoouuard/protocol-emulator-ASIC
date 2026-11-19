@@ -152,7 +152,8 @@ async def test_uart_hello_and_echo(dut):
     # so each byte is sent once the previous echo has finished (like typing).
     for byte in b"PinV":
         await send_uart_byte(dut, byte, UART_BIT_CYCLES)
-        await ClockCycles(dut.clk, UART_BIT_CYCLES * 12)
+        # the echo takes 10 bit periods plus a fixed set-up time in cycles
+        await ClockCycles(dut.clk, UART_BIT_CYCLES * 12 + 300)
     echo, widths = decode_uart(rec.edges, UART_BIT_CYCLES, start_index=n_before)
     dut._log.info(f"echo {echo!r}")
     assert echo == b"PinV", f"unexpected echo {echo!r}"

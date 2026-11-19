@@ -20,7 +20,7 @@ Each program reads the cycle counter (`TIME`), runs 16 copies of one instruction
 | Branch not taken / taken | 4 / 6 |
 | `jal`, `c.j`, `c.jal` | 3 |
 | `jalr`, `c.jr` (return) | 6 |
-| PinV custom instruction (no wait) | 6 |
+| PinV custom instruction (no wait), including `SET_TIMER`, `WAIT_TICK`, `SHIFT_*` | 6 |
 | Shift by k ≥ 1 (immediate) | 4 + k/4 + k mod 4 |
 | Shift by a register | worst case (k = 31) + 1 = 15 |
 | 32-bit instruction at an address not multiple of 4 | +1 |
@@ -32,7 +32,8 @@ Each program reads the cycle counter (`TIME`), runs 16 copies of one instruction
 
 | Demo | Checker: smallest proven budget | RTL: at that budget | RTL: one cycle less |
 |---|---|---|---|
-| UART | 44 cycles per bit | no deadline missed | missed |
+| UART (`SHIFT_OUT`/`SHIFT_IN`) | 18 cycles per bit | no deadline missed | missed by 1 cycle, at the instruction the checker pointed to |
+| UART (separate `WAIT_UNTIL` + `PIN_OUT`, earlier version) | 44 cycles per bit | no deadline missed | missed |
 | SPI (mode 0) | 77 cycles per half period | no deadline missed | missed |
 | I2C | 54 cycles per quarter period | no deadline missed | missed |
 

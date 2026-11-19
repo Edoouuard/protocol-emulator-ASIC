@@ -41,6 +41,10 @@ CASES = {
     "TIME":          ("", "TIME(a1)"),
     "WAIT_UNTIL":    ("", "WAIT_UNTIL(zero, zero)"),
     "WAIT_PIN":      ("", "WAIT_PIN(zero, zero, zero)"),
+    "SET_TIMER":     ("", "SET_TIMER(zero, zero)"),
+    "WAIT_TICK":     ("SET_TIMER(zero, zero)", "WAIT_TICK(zero)"),
+    "SHIFT_OUT":     ("SET_TIMER(zero, zero)", "SHIFT_OUT(a1, a1, zero)"),
+    "SHIFT_IN":      ("SET_TIMER(zero, zero)", "SHIFT_IN(a1, a1, zero)"),
 }
 for k in [0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 31]:
     CASES[f"c.slli{k}"] = ("", f"c.slli a1, {k}") if k else ("", "nop")  # c.slli 0 is a hint; skip

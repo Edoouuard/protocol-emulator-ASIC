@@ -152,6 +152,25 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 10. La vitesse : des instructions « fusionnées »
+
+**Le problème.** Envoyer un bit demandait quatre instructions : attendre l'échéance, changer la broche, décaler la donnée, avancer l'échéance. Chacune passe par la porte d'extension de PicoRV32, qui coûte 6 cycles. Résultat : 44 cycles par bit au minimum, quand un concurrent inspiré des PIO du RP2040 change une broche à chaque cycle.
+
+**Ce qu'on a fait.** L'unité garde désormais sa propre échéance et son propre pas. Une seule instruction, `SHIFT_OUT`, attend l'échéance, sort le bit, décale la donnée et avance l'échéance. Même chose en réception avec `SHIFT_IN`, et `WAIT_TICK` pour une simple attente périodique.
+
+**Le résultat, mesuré et prouvé.**
+- Le vérificateur prouve maintenant l'UART à **18 cycles par bit**, contre 44 : 2,4 fois plus rapide, soit environ 2,2 Mbaud à 40 MHz.
+- Sur le circuit simulé, aucune échéance n'est ratée à 18 cycles ; à 17, une l'est, d'exactement 1 cycle, à l'instruction que le vérificateur avait désignée.
+- La preuve formelle couvre les nouvelles instructions. Zéro gigue, l'échéance avance d'exactement un pas, et le bit sort sur la bonne broche et nulle part ailleurs. Trois nouveaux bugs volontaires ont tous été attrapés, chacun avec un contre-exemple concret.
+
+**Ce qui a coincé.**
+- Le vérificateur a montré que le goulot n'était plus l'émission mais la préparation de la réception, entre le bit de start et la première lecture. On a déplacé ces calculs avant l'attente du bit de start.
+- À 16 cycles par bit, une constante plus petite tient dans une instruction plus courte. Le code se décale et l'alignement change, ce qui coûte 2 cycles. Seule l'analyse du vrai binaire pouvait le voir.
+
+**À retenir.** Accélérer, c'est d'abord mesurer où part le temps. Ici, le vérificateur de minutage sert aussi d'outil d'optimisation : il pointe le segment le plus lent.
+
+---
+
 ## Ce qui reste à faire
 
 1. Faire passer la fabrication virtuelle à 40 MHz, puis la simulation sur le dessin final (les vraies portes logiques).

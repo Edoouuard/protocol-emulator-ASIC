@@ -48,6 +48,18 @@ The edge lands at a fixed offset from the deadline whatever the code in between 
 
 Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The shortest bit period the demo loop sustains is between 41 and 48 cycles (48 passes, 40 fails), i.e. about 1 Mbaud at a 50 MHz clock.
 
+## Demo programs
+
+All three are in `firmware/` and are tested end to end in `test/test.py` against simulated devices.
+
+| Program | Pins | What it does | Measured in simulation |
+|---|---|---|---|
+| `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | every edge on the bit grid; works down to 48 cycles/bit (~1 Mbaud at 50 MHz) |
+| `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; works down to `SPI_HALF=16` |
+| `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; SCL low ≥ ~77 cycles (code time): ~100 kHz by default, ~380 kHz at most at 50 MHz |
+
+I2C uses `PIN_DIR` for open drain: the output value stays 0 and the pin is either driven low (output enabled) or released (input), with external pull-ups. After releasing SCL the program waits with `WAIT_PIN` until the line is actually high, which handles clock stretching, and re-anchors its deadlines on that moment.
+
 ## Loading a program
 
 1. Drive `ui_in[7]` (LOAD) high: the core is held in reset, the byte address returns to 0.
@@ -61,12 +73,14 @@ When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip 
 - 512 bytes of memory: enough for UART/SPI/I2C routines, tight for C code with a stack.
 - Single-threaded: one protocol loop at a time; the UART echo cannot receive while transmitting.
 - `WAIT_PIN` has no timeout yet.
+- Outputs reset to 0, so an active-low chip select is asserted until the program sets it. A configurable reset value is a candidate fix.
+- I2C fast mode (400 kHz) is not reached at 50 MHz; the bit loop needs optimising or a faster clock.
 - Area and maximum clock are estimates until the GDS flow runs (generic synthesis: ~15k cells, ~5.2k flip-flops, most of them memory).
 
 ## Roadmap
 
 1. Confirm area and timing with the GDS flow; tune `clock_hz` and memory size.
-2. SPI master (modes 0-3) and I2C master (100/400 kHz, open-drain through `PIN_DIR`).
-3. Timeout on `WAIT_PIN`; shift-and-output instruction if loops are too slow.
+2. Reach I2C 400 kHz; a shift-and-output instruction if loops stay too slow.
+3. Timeout on `WAIT_PIN`; configurable output reset value.
 4. Base ISA tests (`riscv-tests`) and gate-level simulation.
 5. A protocol written after the design is frozen (e.g. WS2812 or PS/2) to demonstrate flexibility.

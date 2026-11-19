@@ -23,11 +23,20 @@ module tb ();
   wire [7:0] uio_out;
   wire [7:0] uio_oe;
 
+  // I2C bus on uio[0] (SDA) and uio[1] (SCL): open drain with pull-ups.
+  // A line is low if the chip drives it low (output enabled, value 0) or
+  // the simulated device (sda_dev_low / scl_dev_low) pulls it low.
+  reg sda_dev_low = 1'b0;
+  reg scl_dev_low = 1'b0;
+  wire sda_bus = ~((uio_oe[0] & ~uio_out[0]) | sda_dev_low);
+  wire scl_bus = ~((uio_oe[1] & ~uio_out[1]) | scl_dev_low);
+  wire [7:0] uio_in_bus = {uio_in[7:2], scl_bus, sda_bus};
+
   // Replace tt_um_edoouuard_protoemu with your module name:
   tt_um_edoouuard_protoemu user_project (
       .ui_in  (ui_in),    // Dedicated inputs
       .uo_out (uo_out),   // Dedicated outputs
-      .uio_in (uio_in),   // IOs: Input path
+      .uio_in (uio_in_bus),   // IOs: Input path
       .uio_out(uio_out),  // IOs: Output path
       .uio_oe (uio_oe),   // IOs: Enable path (active high: 0=input, 1=output)
       .ena    (ena),      // enable - goes high when design is selected

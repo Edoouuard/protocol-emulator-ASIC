@@ -17,8 +17,9 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 | Template configured (8x4, top module) | ✅ |
 | PicoRV32 integrated, pin/timing unit, SPI program loader | ✅ |
 | UART TX + RX echo demo, cycle-exact in simulation | ✅ |
+| SPI master demo (JEDEC ID read), modes 0-3 | ✅ |
+| I2C master demo (register read, repeated START, clock stretching, NACK) | ✅ |
 | GDS + precheck passing | ⏳ first run pending |
-| SPI and I2C demo programs | ⏳ |
 | Base ISA tests, gate-level simulation | ⏳ |
 | Write-up | ⏳ |
 

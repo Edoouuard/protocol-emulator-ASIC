@@ -8,6 +8,6 @@ pinv_io pinv_loader top:
 	$(SBY) -f $@.sby
 
 clean:
-	rm -rf pinv_io pinv_io_* pinv_loader pinv_loader_prove pinv_loader_cover top top_prove top_cover
+	rm -rf pinv_io pinv_io_prove pinv_io_cover pinv_loader pinv_loader_prove pinv_loader_cover top top_prove top_cover
 
 .PHONY: all clean pinv_io pinv_loader top

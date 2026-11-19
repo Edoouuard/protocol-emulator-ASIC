@@ -1,51 +1,72 @@
-# PinV — architecture proposal (draft v0)
+# PinV architecture (v0.1)
 
-> Status: proposal, not implemented. Everything below is open to change.
+> Status: first working version in simulation. Area and timing still to be confirmed by the Tiny Tapeout GDS flow.
 
 ## Idea in one sentence
 
-A small RISC-V core (RV32E) whose every instruction takes a **fixed, known number of cycles**, extended with a handful of **pin and timing instructions**, so any serial protocol can be written as an ordinary program — and assembled with the standard GNU toolchain.
+A small open-source RISC-V core with a few **pin and deadline instructions**, so any serial protocol can be written as an ordinary program — and built with the standard RISC-V GNU toolchain, without a custom assembler.
 
-## Why RISC-V rather than a custom ISA
+## Building blocks
 
-The competition rewards flexibility (protocols the chip was not designed for), a usable toolchain and a clear write-up.
-
-- **Toolchain for free.** Standard RV32E code is compiled by stock GCC/LLVM. Custom instructions are emitted with the assembler's `.insn` directive and wrapped in macros, so no custom assembler has to be written or trusted.
-- **General purpose by construction.** Branches, arithmetic and memory are there, so protocol logic (CRC, addressing, ACK/NACK handling, framing) runs on the chip, not only bit shifting.
-- **Deterministic timing is the differentiator.** No caches, no branch prediction, no variable-latency stalls: a program's timing can be computed exactly from its instruction count, which is what bit-banging needs.
-
-Trade-off accepted: a PIO-style state machine (RP2040) moves bits in fewer cycles. PinV trades raw speed for programmability and toolchain reuse. At a 60 MHz clock and 2 cycles per instruction, 30 M instructions/s is ample for UART, SPI and I2C at 100/400 kHz; 10 Mbit Ethernet is out of scope.
-
-## Blocks
-
-| Block | Role | Area estimate (to verify) |
+| Block | Source | Role |
 |---|---|---|
-| RV32E core | 16 × 32-bit registers, fixed-latency execution | to measure after synthesis |
-| Program/data SRAM | program loaded at reset (chip loses state when deselected) | SRAM macro, size TBD |
-| Loader | SPI slave on input pins; RP2350 on the demo board writes the program, then releases the core | small |
-| Pin unit | drives `uo_out`, samples `ui_in`, controls `uio` direction | small |
-| Cycle counter | free-running counter for timed waits | small |
+| Core | [PicoRV32](https://github.com/YosysHQ/picorv32) (ISC license), unmodified, commit `ef203c2` | RV32EC: 16 registers, compressed instructions |
+| Pin/timing unit | `src/pinv_io.v` | Custom instructions through PicoRV32's co-processor interface (PCPI) |
+| Memory | `src/project.v` | 512 bytes of program + data, single-cycle, byte-writable |
+| Loader | `src/pinv_loader.v` | Write-only SPI slave; the demo board's RP2350 loads the program |
 
-## Pin and timing extension (custom-0 opcode space, draft)
+PicoRV32 configuration: RV32E (`ENABLE_REGS_16_31=0`), compressed ISA on, counters off, single-port register file, PCPI on, illegal-instruction and misalignment traps off (area).
 
-| Instruction | Effect |
-|---|---|
-| `pin.out rs1, rs2` | outputs ← (outputs & ~mask rs2) \| (rs1 & rs2) |
-| `pin.in rd` | rd ← sampled inputs (`ui_in`, `uio_in`) |
-| `pin.dir rs1` | sets `uio_oe` |
-| `wait.cyc rs1` | stalls exactly rs1 cycles |
-| `wait.pin rs1, rs2` | stalls until pin rs1 equals level rs2, with timeout in a CSR |
-| `shift.out rd, rs1, rs2` | output LSB of rs1 on pin rs2, rd ← rs1 >> 1 (one-bit shift for SPI/UART) |
-| `shift.in rd, rs1, rs2` | sample pin rs2 into rd's MSB, shift right |
+Reusing a mature, widely used core means verification effort goes into the part that is new — the pin unit, the loader and the protocol programs.
 
-## Verification plan
+## Pin and timing instructions
 
-- Per-instruction cocotb tests against a Python reference model.
-- Subset of the official `riscv-tests` for the base ISA.
-- Protocol tests: PinV programs talking to cocotb bus models (UART, SPI modes 0-3, I2C 100/400 kHz).
-- Gate-level simulation of the hardened netlist.
-- Timing check: measured bit periods in simulation vs. the cycle count computed from the program.
+R-type, opcode custom-0 (`0x0B`), selected by funct3. Emitted with `.insn` through the macros in `firmware/pinv.h`.
 
-## Demonstrations targeted
+| funct3 | Instruction | Effect |
+|---|---|---|
+| 0 | `PIN_OUT rd, val, mask` | out ← (out & ~mask) \| (val & mask); rd ← new out |
+| 1 | `PIN_IN rd` | rd ← {uio_in, ui_in} (synchronised) |
+| 2 | `PIN_DIR rd, val, mask` | uio_oe ← (oe & ~mask) \| (val & mask), bits 15:8 |
+| 3 | `TIME rd` | rd ← free-running cycle counter |
+| 4 | `WAIT_UNTIL rd, deadline` | stall until counter reaches deadline; rd ← counter |
+| 5 | `WAIT_PIN rd, mask, level` | stall until (pins & mask) == (level & mask); rd ← counter (timestamp) |
 
-UART TX/RX, SPI master modes 0-3, I2C master. Stretch: a protocol nobody asked for (e.g. WS2812 LEDs or PS/2), written after the chip design is frozen, to prove flexibility.
+Bit map: outputs [7:0] = `uo_out`, [15:8] = `uio_out`; inputs [7:0] = `ui_in`, [15:8] = `uio_in`.
+
+## Timing model: deadline-anchored I/O
+
+PicoRV32 is a multi-cycle core: instructions take several cycles, and shifts take a number of cycles that depends on the shift amount. PinV does not try to make every instruction take a fixed time. Instead, every timing-critical edge is anchored on an **absolute deadline** of the cycle counter:
+
+```
+WAIT_UNTIL(zero, t)     # release exactly one cycle after counter == t
+PIN_OUT(zero, bit, m)   # pin changes a fixed number of cycles later
+t += BIT_CYCLES         # next deadline, computed from the previous one
+```
+
+The edge lands at a fixed offset from the deadline whatever the code in between did, as long as it finished before the deadline. Errors never accumulate, because each deadline is derived from the previous deadline, not from "now". `WAIT_PIN` returns the time of the input edge, so receivers can sample in the middle of each bit by adding offsets to that timestamp.
+
+Measured in simulation (UART demo): every TX edge falls exactly on a multiple of the bit period. The shortest bit period the demo loop sustains is between 41 and 48 cycles (48 passes, 40 fails), i.e. about 1 Mbaud at a 50 MHz clock.
+
+## Loading a program
+
+1. Drive `ui_in[7]` (LOAD) high: the core is held in reset, the byte address returns to 0.
+2. Shift the program in on `ui_in[5]` (MOSI) with `ui_in[6]` (SCK), SPI mode 0, MSB first, SCK ≤ clk/4.
+3. Drive LOAD low: the core starts at address 0.
+
+When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip loses its state when deselected, so the program must be reloaded after reselection, as the competition rules point out.
+
+## Known limitations (v0.1)
+
+- 512 bytes of memory: enough for UART/SPI/I2C routines, tight for C code with a stack.
+- Single-threaded: one protocol loop at a time; the UART echo cannot receive while transmitting.
+- `WAIT_PIN` has no timeout yet.
+- Area and maximum clock are estimates until the GDS flow runs (generic synthesis: ~15k cells, ~5.2k flip-flops, most of them memory).
+
+## Roadmap
+
+1. Confirm area and timing with the GDS flow; tune `clock_hz` and memory size.
+2. SPI master (modes 0-3) and I2C master (100/400 kHz, open-drain through `PIN_DIR`).
+3. Timeout on `WAIT_PIN`; shift-and-output instruction if loops are too slow.
+4. Base ISA tests (`riscv-tests`) and gate-level simulation.
+5. A protocol written after the design is frozen (e.g. WS2812 or PS/2) to demonstrate flexibility.

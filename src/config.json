@@ -15,9 +15,9 @@
   "//": "Users have reported that values up to 80 worked well for them.",
   "PL_TARGET_DENSITY_PCT": 60,
 
-  "//": "PL_ROUTABILITY_DRIVEN - Disabled: OpenROAD global placement aborted with GRT-0010",
-  "//": "(instance not placed) at its first routability iteration, at densities 60 and 70.",
-  "PL_ROUTABILITY_DRIVEN": 0,
+  "//": "EXTRA_EXCLUDED_CELLS - ABC was using IHP I/O pads (IOPadOut16mA, 14400 um2) as",
+  "//": "high-fanout buffers; the pad cannot be placed inside a tile (GRT-0010). Exclude them.",
+  "EXTRA_EXCLUDED_CELLS": ["sg13cmos5l_IOPad*"],
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",

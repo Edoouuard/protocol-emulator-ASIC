@@ -191,9 +191,26 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 12. La simulation sur portes réelles révèle un vrai bug
+
+**Le symptôme.** La fabrication virtuelle passait à 40 MHz, mais la simulation sur le circuit tel qu'il sera gravé (les portes IHP réelles) ne produisait rien : pas un octet, sur aucun protocole.
+
+**L'enquête.**
+1. Une simulation avec des portes génériques passait. Le problème venait donc des modèles de cellules IHP.
+2. Avec les vrais modèles IHP, tout restait indéterminé (`X`). Raison : ces modèles ne pilotent leurs entrées qu'à travers des contraintes de timing, que notre version d'Icarus ne gère pas. On a fabriqué une copie fonctionnelle des modèles, où chaque signal « retardé » est relié directement à son origine.
+3. Résultat : les sorties passaient bien à 0 à la remise à zéro, puis redevenaient indéterminées dès le démarrage. En suivant les signaux du processeur cycle par cycle, la cause est apparue.
+
+**La cause.** Juste après la remise à zéro, avant tout chargement, le processeur démarrait et exécutait le contenu de la mémoire vide. En simulation, ce contenu indéterminé contaminait le verrou, qui contaminait la remise à zéro du processeur, et la puce ne s'en remettait jamais. Sur une vraie puce, le contenu est aléatoire au démarrage. S'il tombait par hasard sur l'instruction `LOCK`, la puce devenait impossible à programmer jusqu'au redémarrage suivant.
+
+**La correction.** Le processeur reste à l'arrêt tant qu'aucun programme n'a été chargé. En ajoutant la propriété correspondante à la preuve formelle, celle-ci a trouvé un second cas limite : une remise à zéro d'un seul cycle, au moment précis d'un `LOCK`, pouvait verrouiller une puce sans programme. Corrigé à son tour : le verrou n'est accepté que d'un programme réellement en marche.
+
+**À retenir.** Chaque niveau de vérification attrape des choses que les autres ne voient pas. Les tests sur le code supposent que tout registre a une valeur ; le circuit réel ne fait pas ce cadeau. C'est aussi pour ça que le règlement recommande la simulation sur portes.
+
+---
+
 ## Ce qui reste à faire
 
-1. Faire passer la fabrication virtuelle à 40 MHz, puis la simulation sur le dessin final (les vraies portes logiques).
+1. Confirmer sur GitHub que la simulation sur portes réelles passe avec la correction.
 2. Le sérialiseur à formes d'onde (protocoles rapides, LED WS2812), la démo de pare-feu de bus SPI, l'état de démarrage configurable des sorties.
 3. Rédiger le compte rendu pour le jury.
 4. Soumettre avant le 18 janvier 2027.

@@ -7,7 +7,12 @@
 
     reg f_past = 1'b0;
     always @(posedge clk) f_past <= 1'b1;
-    always @(*) if (!f_past) assume (!rst_n);
+    // The chip is reset for at least 3 cycles at power-up (the Tiny Tapeout
+    // board holds rst_n low far longer): enough for every register that feeds
+    // the reset logic to settle.
+    reg [1:0] f_age = 2'd0;
+    always @(posedge clk) if (f_age != 2'd3) f_age <= f_age + 2'd1;
+    always @(*) if (f_age != 2'd3) assume (!rst_n);
 
     always @(posedge clk) if (f_past) begin
         // T1. The loader never writes memory while the program runs:
@@ -17,8 +22,13 @@
         // T2. While LOAD is high (after synchronisation), the core is held in reset.
         if ($past(load)) assert (!core_resetn);
 
-        // T3. When LOAD is low and the chip is out of reset, the core runs.
-        if ($past(!load && rst_n)) assert (core_resetn);
+        // T3. When LOAD is low, a program has been loaded and the chip is out of
+        // reset, the core runs.
+        if ($past(!load && rst_n && loaded)) assert (core_resetn);
+        // T4. The core never runs before a program has been loaded (after power-up
+        // the memory holds random values, which must never execute).
+        if (core_resetn) assert ($past(loaded));
+        if (!$past(rst_n)) assert (!loaded);
 
         // K1. Once locked, the chip stays locked until it is reset.
         if ($past(locked) && $past(rst_n)) assert (locked);
@@ -28,6 +38,8 @@
         // replaced nor halted from outside until the next reset.
         if ($past(locked)) assert (!ld_we);
         if ($past(locked) && $past(rst_n)) assert (core_resetn);
+        // Locking is only possible once a program runs.
+        if (locked) assert (loaded);
     end
 
     // Covers (reachability, so the proof is not vacuous). Loader writes themselves

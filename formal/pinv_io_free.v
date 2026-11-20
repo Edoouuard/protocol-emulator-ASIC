@@ -21,7 +21,11 @@ module pinv_io (
     (* anyseq *) reg [15:0] f_out;
     (* anyseq *) reg [7:0]  f_oe;
     (* anyseq *) reg        f_lock;
-    assign lock_req = f_lock;
+    // The real unit only raises lock_req when out of reset (proven in
+    // pinv_io_props.vh, P8 and K0): free otherwise.
+    reg lock_q = 1'b0;
+    always @(posedge clk) lock_q <= resetn && f_lock;
+    assign lock_req = lock_q;
     assign pcpi_wr = f_wr; assign pcpi_rd = f_rd; assign pcpi_wait = f_wait;
     assign pcpi_ready = f_ready; assign pins_out = f_out; assign uio_oe = f_oe;
 endmodule

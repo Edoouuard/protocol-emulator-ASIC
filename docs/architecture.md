@@ -89,7 +89,7 @@ Scope and assumptions: the cost model holds for PinV's configuration (single-cyc
 | `pinv_io` (bounded group) | a `WAIT_PIN` with a limit never waits longer than it; without a limit it only ends on a match; the limit changes only by `SET_LIMIT`; `timed_out` is set exactly when a wait gives up, reported and cleared by `PIN_IN`; `LOCK` raises the lock request for exactly one cycle |
 | `pinv_io` × 2 (non-interference) | same instructions and timing operands, arbitrary different data: identical timing state and answer cycles forever |
 | `pinv_loader` | writes only in load mode after the 8th SCK edge; each load starts at address 0; addresses advance by exactly one per byte; the written byte is the one shifted in |
-| top level | the loader never writes memory while the core runs; the core is held in reset while LOAD is high and released when it falls; once locked, stays locked until reset, LOAD has no effect (no loader write, core never stopped) |
+| top level | the core never runs before a program has been loaded; a lock can only come from a running program; the loader never writes memory while the core runs; the core is held in reset while LOAD is high and released when it falls; once locked, stays locked until reset, LOAD has no effect (no loader write, core never stopped) |
 
 The PicoRV32 side of the PCPI handshake is modelled by assumptions (operands stable while waiting, request kept while told to wait, dropped after the answer). For the top level, PicoRV32 and the pin/timing unit are replaced by stand-ins with completely free outputs (`formal/picorv32_free.v`, `formal/pinv_io_free.v`), which over-approximate any behaviour of both; the unit is proven on its own.
 
@@ -107,6 +107,8 @@ Together: the formal proof establishes the hardware timing contract; `pinv_check
 | Timing side channel on the pins | deadline-anchored I/O | **proven** by self-composition (`formal/pinv_io_ni.sv`): two copies of the unit fed the same instructions and timing operands but arbitrary different data keep identical timing state (counter, deadline, step, limits) and answer at the same cycles, so when a bit leaves does not depend on its value. For a whole program, `pinv_check` proves no deadline is missed, so every edge sits on its deadline whatever the data |
 
 Out of scope, stated plainly: physical attacks (voltage or clock glitching, laser fault injection, power and electromagnetic side channels, probing); PicoRV32 itself, used unmodified and not re-proven here; properties nobody wrote down; protocol-level loss (the UART echo cannot receive while it transmits).
+
+Assumption of the top-level proof: the chip is reset for at least 3 cycles at power-up (the Tiny Tapeout board holds reset far longer).
 
 Solver note: the proofs run with Yices (`pip install yices-solver`). Z3 4.8.12, from Ubuntu 24.04, did not finish on the unit once the timeout logic was added.
 
@@ -128,7 +130,7 @@ I2C uses `PIN_DIR` for open drain: the output value stays 0 and the pin is eithe
 2. Shift the program in on `ui_in[5]` (MOSI) with `ui_in[6]` (SCK), SPI mode 0, MSB first, SCK ≤ clk/4.
 3. Drive LOAD low: the core starts at address 0.
 
-When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. The chip loses its state when deselected, so the program must be reloaded after reselection, as the competition rules point out.
+When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. After a reset, the core stays held until a program has been loaded at least once: the memory holds random values at power-up, and running them could, by chance, execute `LOCK` and make the chip impossible to program until the next reset. The chip loses its state when deselected, so the program must be reloaded after reselection, as the competition rules point out.
 
 ## Known limitations (v0.1)
 

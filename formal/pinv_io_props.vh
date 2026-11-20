@@ -181,6 +181,7 @@
         assert (uio_oe == 8'd0);
         assert (counter == 32'd0);
         assert (!pcpi_ready);
+        assert (!lock_req);
     end
 
 `endif

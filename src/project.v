@@ -41,18 +41,26 @@ module tt_um_edoouuard_protoemu #(
     // is reset: the program can no longer be stopped or replaced from outside.
     wire lock_req;
     reg  locked;
+    reg  core_resetn;
     always @(posedge clk) begin
-        if (!rst_n)        locked <= 1'b0;
-        else if (lock_req) locked <= 1'b1;
+        if (!rst_n)                       locked <= 1'b0;
+        else if (lock_req && core_resetn) locked <= 1'b1;   // only from a running program
     end
     wire load = in_s2[7] && !locked;
 
     // ---- Core reset ----------------------------------------------------
-    reg core_resetn;
-    always @(posedge clk) core_resetn <= rst_n && !load;
+    // The core stays in reset until a program has been loaded: after power-up
+    // the memory holds random values, and running them could, by chance,
+    // execute LOCK and make the chip impossible to program until the next reset.
+    wire        ld_we;              // loader writes a byte (declared here: used below)
+    reg loaded;
+    always @(posedge clk) begin
+        if (!rst_n)     loaded <= 1'b0;
+        else if (ld_we) loaded <= 1'b1;
+        core_resetn <= rst_n && !load && loaded;
+    end
 
     // ---- Loader --------------------------------------------------------
-    wire        ld_we;
     wire [15:0] ld_addr;
     wire [7:0]  ld_data;
 

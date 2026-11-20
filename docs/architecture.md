@@ -73,17 +73,21 @@ Measured in simulation (UART demo): every TX edge falls exactly on a multiple of
 
 A deadline-anchored program is only correct if the code between an anchor and the next `WAIT_UNTIL` always finishes before the deadline. Tests can show that it did on the paths they ran. `tools/pinv_check.py` proves that it does on every path, before the program is loaded:
 
-1. It rebuilds the control-flow graph of the linked program, including calls and returns through any link register.
-2. For every anchor (`TIME`, `WAIT_UNTIL`, `WAIT_PIN`) it explores every path to each `WAIT_UNTIL` reachable without another anchor, and computes the worst-case cycle count with a cost model of PinV's PicoRV32 calibrated on the RTL (`tools/timing/`).
-3. It compares that worst case with the budget the source declares with `PINV_BUDGET(cycles)` (stored in a section that is not loaded on the chip). A loop without a bound between an anchor and a deadline is an error.
+1. **Control flow.** It rebuilds the control-flow graph of the code reachable from address 0. A return is accepted only as `jalr x0, 0(rs)` inside a function that every caller enters with `jal rs`, and whose body never writes rs. Any other indirect jump, a jump to an address that is not an instruction, and code that runs off the end of the program are refused.
+2. **Deadlines, from the code.** An abstract interpretation of the registers computes each deadline as "anchor time + constant" on every path. `TIME`, `WAIT_UNTIL` and `WAIT_PIN` return the counter at the cycle they decide, and a met deadline is the next anchor, so this is exact. When a deadline can take several values (the first bit of `uart_rx` is 1.5 periods away, the next ones 1 period), the smallest is used. A deadline that is not anchor + constants is refused. `PINV_BUDGET(cycles)` is only an assertion: the program is refused if the real deadline is shorter.
+3. **Worst case.** For every anchor it explores every path to each deadline reachable without another anchor, and computes the worst-case cycle count with a cost model of PinV's PicoRV32 calibrated on the RTL (`tools/timing/`). A loop without a bound between an anchor and a deadline is refused.
+4. **Coverage.** A deadline reachable from the start without any anchor is refused. The report gives the deadlines found, analysed and not covered. `PROVEN` is printed only when at least one deadline was analysed and nothing was refused; a program without deadlines gets `NO DEADLINE`.
+5. **The loaded image.** It proves the exact bytes the loader writes, refuses any store that could overwrite the code (including through the 512-byte address alias), and writes a certificate with the image's SHA-256. The tests load nothing without a matching certificate.
 
 The firmware build runs it on every program: if a deadline can be missed, no binary is produced. CI does the same.
+
+`tools/check_tests/` holds programs built to fool a checker: a computed jump into slow code, a return with an offset, a clobbered return register, a wrong link register, code that runs off the end, a budget that lies, a deadline loaded from memory, a timer started without an anchor, a store that overwrites the code, a program with no deadline. Each must be refused (or reported as making no claim). The first version of the checker accepted nine of the ten; the current one refuses all of them.
 
 What it found on the demos: the SPI demo asked for 48-cycle half periods, but one path through the bit loop takes 77 cycles. SPI is clocked by the master, so the tests still passed, at a slower SCK than requested. The default is now 80.
 
 Validation on the RTL: at the smallest budget the checker proves for each demo, the simulation shows no missed deadline; one cycle less, it shows a miss. Details in `tools/timing/README.md`.
 
-Scope and assumptions: the cost model holds for PinV's configuration (single-cycle memory, no interrupts); `WAIT_PIN` waits for an input and has no deadline, so only `WAIT_UNTIL` deadlines are checked; indirect calls are rejected.
+Scope and assumptions: the cost model holds for PinV's configuration (single-cycle memory, no interrupts) and is validated on the RTL, not proven; `WAIT_PIN` waits for an input and has no deadline; indirect calls, computed jumps and stack-saved return addresses are refused, which is stricter than needed but sound.
 
 ## Formal proof of the hardware
 

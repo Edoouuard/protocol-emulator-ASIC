@@ -1,0 +1,52 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/spi_jedec.elf",
+ "status": "proven",
+ "image_size": 208,
+ "image_sha256": "83f1d22329d994eed0f3ae9099c70132be69d9dfff833e85b505610c05d8c5bc",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 5,
+  "analysed": 5,
+  "not_covered": 0,
+  "unreachable": 1,
+  "list": [
+   {
+    "at": "0x46",
+    "anchor": "0x54",
+    "worst": 77,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x54",
+    "anchor": "0x46",
+    "worst": 23,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x70",
+    "anchor": "0x54",
+    "worst": 51,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x98",
+    "anchor": "0x8e",
+    "worst": 16,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0xa0",
+    "anchor": "0x98",
+    "worst": 13,
+    "deadline": 64,
+    "declared": 64
+   }
+  ]
+ },
+ "errors": []
+}

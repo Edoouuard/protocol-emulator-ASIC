@@ -55,10 +55,11 @@
 
 /*
  * Timing budget, read by tools/pinv_check.py (not loaded on the chip).
- * Declares that, from here until the next PINV_BUDGET, every deadline given
- * to WAIT_UNTIL is at least `cycles` after the most recent timing anchor
- * (WAIT_UNTIL, WAIT_PIN or TIME). The checker proves that the code between
- * each anchor and the next WAIT_UNTIL always fits in that budget.
+ * Asserts that, from here until the next PINV_BUDGET, every deadline is at
+ * least `cycles` after the most recent timing anchor (TIME, WAIT_UNTIL,
+ * WAIT_PIN or a timer wait). The checker does not trust it: it computes each
+ * deadline from the code, proves the worst-case path fits in that, and
+ * refuses the program if the real deadline is shorter than declared.
  */
 #define PINV_BUDGET(cycles) \
     .pushsection .pinv.budget, "", @progbits ; .word 0f, (cycles) ; .popsection ; 0:

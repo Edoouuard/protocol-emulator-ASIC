@@ -64,7 +64,7 @@ Requires Icarus Verilog. The repository includes a dev container (GitHub Codespa
 make -C firmware BIT_CYCLES=347   # e.g. 40 MHz / 115200 baud
 ```
 
-Each program is linked, then checked by `tools/pinv_check.py`; the binary is only produced if every deadline is proven. Programs declare their timing budget with `PINV_BUDGET(cycles)` (see `firmware/pinv.h`).
+Each program is linked, then checked by `tools/pinv_check.py`; the binary is only produced if every deadline is proven, with a proof certificate (`build/<name>.proof.json`, SHA-256 of the image). Deadlines are computed from the code; `PINV_BUDGET(cycles)` is an assertion the checker verifies (see `firmware/pinv.h`). The checker's own tests: `python3 tools/check_tests/run.py`.
 
 Requires `riscv64-unknown-elf-gcc` (any RISC-V GNU toolchain with RV32E support).
 

@@ -1,0 +1,38 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/uart_echo.elf",
+ "status": "proven",
+ "image_size": 119,
+ "image_sha256": "485a2b053ed8bef7a8fb8af8135d470b71d33efa2c651b78a351fce95c70c86e",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 3,
+  "analysed": 3,
+  "not_covered": 0,
+  "unreachable": 0,
+  "list": [
+   {
+    "at": "0x38",
+    "anchor": "0x2e",
+    "worst": 16,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0x40",
+    "anchor": "0x38",
+    "worst": 13,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0x64",
+    "anchor": "0x5a",
+    "worst": 16,
+    "deadline": 64,
+    "declared": 64
+   }
+  ]
+ },
+ "errors": []
+}

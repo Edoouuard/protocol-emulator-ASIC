@@ -1,0 +1,115 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/i2c_read.elf",
+ "status": "proven",
+ "image_size": 472,
+ "image_sha256": "1375fccfa0b36bd7656814c6bdec4fd0a2d47497a48a1570e551ac085ede4863",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 14,
+  "analysed": 14,
+  "not_covered": 0,
+  "unreachable": 1,
+  "list": [
+   {
+    "at": "0x68",
+    "anchor": "0x62",
+    "worst": 10,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0x78",
+    "anchor": "0x68",
+    "worst": 23,
+    "deadline": 120,
+    "declared": 60
+   },
+   {
+    "at": "0x8c",
+    "anchor": "0x86",
+    "worst": 10,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0x9a",
+    "anchor": "0x8c",
+    "worst": 20,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0xac",
+    "anchor": "0xa6",
+    "worst": 10,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0xba",
+    "anchor": "0xac",
+    "worst": 20,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0xce",
+    "anchor": "0xc8",
+    "worst": 11,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0xdc",
+    "anchor": "0xce",
+    "worst": 21,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0xf0",
+    "anchor": "0xe8",
+    "worst": 14,
+    "deadline": 120,
+    "declared": 60
+   },
+   {
+    "at": "0x100",
+    "anchor": "0x130",
+    "worst": 54,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0x114",
+    "anchor": "0x100",
+    "worst": 30,
+    "deadline": 60,
+    "declared": 60
+   },
+   {
+    "at": "0x130",
+    "anchor": "0x120",
+    "worst": 29,
+    "deadline": 120,
+    "declared": 60
+   },
+   {
+    "at": "0x1a0",
+    "anchor": "0x196",
+    "worst": 16,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0x1a8",
+    "anchor": "0x1a0",
+    "worst": 13,
+    "deadline": 64,
+    "declared": 64
+   }
+  ]
+ },
+ "errors": []
+}

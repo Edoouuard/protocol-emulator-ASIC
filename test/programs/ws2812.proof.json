@@ -1,0 +1,31 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/ws2812.elf",
+ "status": "proven",
+ "image_size": 128,
+ "image_sha256": "37c0bf84a7d62eb6f14b146969f3fbfcf1b8eb89a3209b5857a47192ecaffd09",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 2,
+  "analysed": 2,
+  "not_covered": 0,
+  "unreachable": 0,
+  "list": [
+   {
+    "at": "0x2c",
+    "anchor": "0x2c",
+    "worst": 39,
+    "deadline": 50,
+    "declared": 50
+   },
+   {
+    "at": "0x46",
+    "anchor": "0x3a",
+    "worst": 17,
+    "deadline": 12000,
+    "declared": 12000
+   }
+  ]
+ },
+ "errors": []
+}

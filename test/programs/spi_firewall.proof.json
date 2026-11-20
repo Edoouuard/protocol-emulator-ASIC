@@ -1,0 +1,31 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/spi_firewall.elf",
+ "status": "proven",
+ "image_size": 347,
+ "image_sha256": "1b3e94507ea6f844fd449a65cc0c8857039639f03b97d24fafcb4008a592f663",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 2,
+  "analysed": 2,
+  "not_covered": 0,
+  "unreachable": 1,
+  "list": [
+   {
+    "at": "0x11e",
+    "anchor": "0x114",
+    "worst": 18,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0x126",
+    "anchor": "0x11e",
+    "worst": 14,
+    "deadline": 64,
+    "declared": 64
+   }
+  ]
+ },
+ "errors": []
+}

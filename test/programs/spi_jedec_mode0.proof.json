@@ -1,0 +1,59 @@
+{
+ "format": "pinv-proof-1",
+ "elf": "build/spi_jedec.elf",
+ "status": "proven",
+ "image_size": 222,
+ "image_sha256": "163255b7e6d6506dacbb5f457c7b0ec58c8d7b33a319a20717188826ad2e6a73",
+ "checker_sha256": "fbdab2a6174ed22dec13c522cfc881f5edf37e2c72727a9c52230def2df5257a",
+ "deadlines": {
+  "found": 6,
+  "analysed": 6,
+  "not_covered": 0,
+  "unreachable": 1,
+  "list": [
+   {
+    "at": "0x46",
+    "anchor": "0x54",
+    "worst": 77,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x54",
+    "anchor": "0x46",
+    "worst": 23,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x74",
+    "anchor": "0x54",
+    "worst": 57,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0x7e",
+    "anchor": "0x74",
+    "worst": 17,
+    "deadline": 80,
+    "declared": 80
+   },
+   {
+    "at": "0xa6",
+    "anchor": "0x9c",
+    "worst": 18,
+    "deadline": 64,
+    "declared": 64
+   },
+   {
+    "at": "0xae",
+    "anchor": "0xa6",
+    "worst": 14,
+    "deadline": 64,
+    "declared": 64
+   }
+  ]
+ },
+ "errors": []
+}

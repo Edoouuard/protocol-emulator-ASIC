@@ -4,6 +4,7 @@
 # End-to-end tests for PinV: load a RISC-V program through the SPI loader,
 # run it, and check the protocol it produces on the pins, cycle by cycle.
 
+import sys
 from pathlib import Path
 
 import cocotb
@@ -13,6 +14,16 @@ from cocotb.triggers import ClockCycles, RisingEdge
 from deadline_monitor import GATE_LEVEL, DeadlineMonitor
 
 PROGRAMS = Path(__file__).parent / "programs"
+sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
+from pinv_check import verify_cert  # noqa: E402
+
+
+def proven_image(name):
+    """The image of a test program, only if its proof certificate matches it
+    byte for byte (same SHA-256, made by this version of pinv_check)."""
+    image, cert = PROGRAMS / f"{name}.bin", PROGRAMS / f"{name}.proof.json"
+    assert verify_cert(image, cert), f"{name}.bin has no valid proof certificate: run programs/build.sh"
+    return image.read_bytes()
 
 # Must match the BIT_CYCLES the program was built with (see programs/README.md).
 UART_BIT_CYCLES = 64
@@ -133,7 +144,7 @@ async def test_uart_hello_and_echo(dut):
     """UART TX at an exact bit period, then RX -> TX echo, all in firmware."""
     await reset(dut)
     set_ui_bit(dut, 0, 1)  # RX idle high
-    image = (PROGRAMS / "uart_echo.bin").read_bytes()
+    image = proven_image("uart_echo")
     dut._log.info(f"loading {len(image)} bytes")
 
     rec = EdgeRecorder(dut, 0)
@@ -167,7 +178,7 @@ async def test_reload(dut):
     """Loading again while running restarts the core with the new program."""
     await reset(dut)
     set_ui_bit(dut, 0, 1)
-    image = (PROGRAMS / "uart_echo.bin").read_bytes()
+    image = proven_image("uart_echo")
     await load_program(dut, image)
     await ClockCycles(dut.clk, UART_BIT_CYCLES * 15)  # interrupt mid-message
 
@@ -242,7 +253,7 @@ async def run_spi_mode(dut, mode):
     rec = EdgeRecorder(dut, 0)
     flash = SpiFlash(dut, mode, [0x00] + SPI_JEDEC_ID)
     mon = DeadlineMonitor(dut)
-    await load_program(dut, (PROGRAMS / f"spi_jedec_mode{mode}.bin").read_bytes())
+    await load_program(dut, proven_image(f"spi_jedec_mode{mode}"))
     await ClockCycles(dut.clk, 9000)
     text, widths = decode_uart(rec.edges, UART_BIT_CYCLES)
     dut._log.info(f"mode {mode}: MOSI {bytes(flash.received).hex()} UART {text.hex()}")
@@ -388,7 +399,7 @@ async def test_i2c_register_read(dut):
     rec = EdgeRecorder(dut, 0)
     dev = I2cDevice(dut, 0x68, {0x75: 0x71}, stretch=200)
     mon = DeadlineMonitor(dut)
-    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    await load_program(dut, proven_image("i2c_read"))
     await ClockCycles(dut.clk, 250 * I2C_Q + 2000)  # 4 bytes of 9 clocks, 4 quarters each
     text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
     dut._log.info(f"I2C log {dev.log}, UART {text.hex()}")
@@ -413,7 +424,7 @@ async def test_i2c_nack(dut):
     set_ui_bit(dut, 0, 1)
     rec = EdgeRecorder(dut, 0)
     dev = I2cDevice(dut, 0x50, {})
-    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    await load_program(dut, proven_image("i2c_read"))
     await ClockCycles(dut.clk, 6000)
     text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
     assert dev.log == ["START", ("addr", 0xD0, "NACK"), "STOP"], f"unexpected {dev.log}"
@@ -428,7 +439,7 @@ async def test_i2c_stuck_bus(dut):
     set_ui_bit(dut, 0, 1)
     rec = EdgeRecorder(dut, 0)
     dev = I2cDevice(dut, 0x68, {0x75: 0x71})
-    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    await load_program(dut, proven_image("i2c_read"))
     # let the address byte go through, then hold SCL low for good
     await ClockCycles(dut.clk, 60 * I2C_Q)
     dut.scl_dev_low.value = 1
@@ -444,7 +455,7 @@ async def test_lock(dut):
     the program can neither be replaced nor stopped from outside."""
     await reset(dut)
     set_ui_bit(dut, 0, 1)
-    await load_program(dut, (PROGRAMS / "uart_echo_locked.bin").read_bytes())
+    await load_program(dut, proven_image("uart_echo_locked"))
     await ClockCycles(dut.clk, UART_BIT_CYCLES * 10 * 8)   # "Hello\n" sent
 
     # Try to load another program; watch that the core is never held in reset.
@@ -458,7 +469,7 @@ async def test_lock(dut):
 
     if not GATE_LEVEL:   # internal signals only exist in RTL simulation
         w = cocotb.start_soon(watch())
-    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    await load_program(dut, proven_image("i2c_read"))
     if not GATE_LEVEL:
         w.cancel()
         assert not stopped, "LOAD stopped the core although the chip is locked"
@@ -514,7 +525,7 @@ async def test_ws2812(dut):
     await reset(dut)
     rec = EdgeRecorder(dut, 1)
     mon = DeadlineMonitor(dut)
-    await load_program(dut, (PROGRAMS / "ws2812.bin").read_bytes())
+    await load_program(dut, proven_image("ws2812"))
     await ClockCycles(dut.clk, 2 * (24 * 4 * WS_PERIOD + WS_RESET) + 3000)
 
     frames = decode_ws2812(rec.edges)
@@ -541,14 +552,14 @@ async def test_idle_state(dut):
     """SET.IDLE: during a program reload the outputs hold the idle state the
     program chose (here UART TX high), not zero; a chip reset clears it."""
     await reset(dut)
-    await load_program(dut, (PROGRAMS / "uart_echo.bin").read_bytes())
+    await load_program(dut, proven_image("uart_echo"))
     await ClockCycles(dut.clk, 200)
     set_ui_bit(dut, LOAD, 1)                    # reload: core held in reset
     await ClockCycles(dut.clk, 20)
     assert int(dut.uo_out.value) == 0x00, "without SET.IDLE the outputs reset to 0"
     set_ui_bit(dut, LOAD, 0)
 
-    await load_program(dut, (PROGRAMS / "ws2812.bin").read_bytes())
+    await load_program(dut, proven_image("ws2812"))
     await ClockCycles(dut.clk, 200)             # SET.IDLE executed
     set_ui_bit(dut, LOAD, 1)
     await ClockCycles(dut.clk, 20)
@@ -666,7 +677,7 @@ async def test_spi_firewall(dut):
     rec = EdgeRecorder(dut, 0)
     flash = FlashMemory(dut)
     before = bytes(flash.mem)
-    await load_program(dut, (PROGRAMS / "spi_firewall.bin").read_bytes())
+    await load_program(dut, proven_image("spi_firewall"))
     await ClockCycles(dut.clk, 200)
 
     jedec = await host_transfer(dut, [0x9F], 3)

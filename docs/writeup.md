@@ -17,6 +17,7 @@ Most protocol emulators get their timing from testing. PinV gets it from proof. 
 | Tests | 13 end-to-end tests, RTL and gate level |
 | Formal proofs | pin/timing unit, non-interference, loader, top level |
 | Mutation check | 15 injected bugs, 15 caught with a counterexample |
+| Timing checker | 10 programs built to fool it, 10 refused |
 
 ## The problem
 
@@ -90,15 +91,19 @@ I verified PinV in four layers. Each layer checks something the others cannot.
 
 `tools/pinv_check.py` is a static worst-case timing checker for PinV programs.
 
-1. It rebuilds the control-flow graph of the linked binary, including calls and returns.
-2. For every timing anchor, it explores every path to the next deadline and computes the worst-case cycle count.
-3. It compares that count with the budget the source declares (`PINV_BUDGET(cycles)`), and fails on any path that can exceed it, or on any unbounded loop in between.
+1. It rebuilds the control-flow graph of the code reachable from address 0. It accepts a return only in one form: `jalr x0, 0(rs)`, inside a function always called with `jal rs`, that never writes rs. Every other indirect jump is refused, and so is a jump outside the program.
+2. It computes each deadline from the code, as "anchor time + constant" on every path. A deadline it cannot pin down is refused.
+3. For every anchor, it explores every path to the next deadline and computes the worst-case cycle count. Any path that can exceed the deadline, or any unbounded loop in between, is refused.
+4. It reports the deadlines found, analysed and not covered, and says `PROVEN` only if at least one was analysed and nothing was refused.
+5. It proves the exact bytes that will be loaded, refuses any store that could overwrite them, and writes a certificate with their SHA-256. Nothing is loaded without it.
 
 The cost model comes from the RTL. I generated benchmark programs for every instruction class, ran them in simulation and measured them (`tools/timing/`). Then I validated the whole model on each demo: at the smallest budget the checker accepts, the simulation shows no missed deadline. One cycle less, it shows a miss.
 
 The firmware build runs the checker. If a deadline can be missed, no binary is produced.
 
 It found a real bug on day one. The SPI demo asked for 48-cycle half periods. One path through the bit loop takes 77. SPI is clocked by the master, so the tests still passed, at a slower clock than requested. Tests could not see it. The checker did.
+
+The checker had holes of its own. A review showed that the first version trusted the budget the programmer declared instead of the deadline the code computed, took any indirect jump for a return, ignored jumps outside the program, and printed `PROVEN` even when it had checked nothing. I wrote ten programs that each exploit one hole (`tools/check_tests/`). The first version accepted nine of them. The current one refuses all ten, and CI runs them on every commit. The demos still pass with the same worst cases as before, so the RTL calibration still holds.
 
 ### 2. The hardware contract is proven formally
 
@@ -132,6 +137,7 @@ Thirteen cocotb tests load real binaries through the SPI loader and check the pi
 | Core running random memory at power-up, which could execute `LOCK` and brick the chip until reset | gate-level simulation | RTL tests (simulators give registers a value; silicon does not) |
 | A one-cycle reset, exactly during `LOCK`, locking a chip with no program | formal proof (top level) | every test |
 | A property that could never fail | mutation check | the proof itself |
+| A checker that accepted 9 of 10 programs built to fool it | external review, then trap programs | the demos (all correct, so they never hit the holes) |
 | Synthesis using two I/O pads as buffers, unplaceable in a tile | comparing cell lists between a passing and a failing GDS run | — |
 
 Each layer caught something the others missed. That is the main lesson of the project.
@@ -171,7 +177,7 @@ One flow bug is worth sharing. After a small RTL change, placement failed on a s
 - Firmware: RISC-V GNU toolchain; instructions emitted with `.insn` macros (`firmware/pinv.h`).
 - Simulation: Icarus Verilog and cocotb; gate level with the IHP cell models.
 - Formal: SymbiYosys, Yosys, Yices.
-- Timing proof: `pinv_check.py`, my own tool, about 370 lines of Python.
+- Timing proof: `pinv_check.py`, my own tool, about 780 lines of Python, with its own test suite of trap programs.
 - Flow: Tiny Tapeout IHP template, LibreLane, GitHub Actions.
 
 ### AI tools

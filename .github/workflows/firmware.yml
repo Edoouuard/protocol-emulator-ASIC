@@ -13,3 +13,7 @@ jobs:
         run: make -C firmware
       - name: Prove every SPI mode
         run: for m in 0 1 2 3; do make -C firmware clean; make -C firmware SPI_MODE=$m build/spi_jedec.bin; done
+      - name: Test the checker itself (trap programs must be refused)
+        run: python3 tools/check_tests/run.py
+      - name: Every test image carries a valid proof certificate
+        run: for b in test/programs/*.bin; do python3 tools/pinv_check.py --verify "$b" "${b%.bin}.proof.json"; done

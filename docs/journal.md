@@ -240,6 +240,31 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 15. Le vérificateur promettait plus qu'il ne prouvait
+
+**La critique.** Une relecture extérieure a pointé un vrai problème : la garantie « aucun programme accepté ne peut manquer une échéance » était plus forte que ce que le vérificateur démontrait. Elle avait raison. Cinq failles :
+
+1. Le budget venait d'une déclaration du programmeur (`PINV_BUDGET`), jamais comparée à l'échéance que le code calcule vraiment. Un programme qui déclare 100 cycles et n'en attend que 10 passait.
+2. Tout saut indirect (`jr`) était pris pour un retour de fonction, sans vérifier sa forme, son registre ni son décalage.
+3. Un saut vers une adresse hors du programme était ignoré en silence.
+4. Le rapport ne distinguait pas les échéances trouvées, analysées et non couvertes.
+5. Le script affichait `PROVEN` même quand il n'avait vérifié aucune échéance.
+
+**La preuve que c'était grave.** J'ai écrit dix petits programmes piégés, chacun exploitant une faille. L'ancien vérificateur en acceptait neuf.
+
+**Ce qui a changé.**
+- L'échéance est maintenant calculée à partir du code : le vérificateur suit la valeur des registres (« heure de l'ancre + constante ») sur tous les chemins. `PINV_BUDGET` n'est plus qu'une affirmation, vérifiée.
+- Un retour n'est accepté que sous une seule forme : `jalr x0, 0(rs)`, dans une fonction toujours appelée avec ce registre, et qui ne l'écrase jamais.
+- Une cible absente, ou du code qui « tombe » au-delà de la fin du programme, est refusé.
+- Le rapport affiche séparément les échéances trouvées, analysées et non couvertes. `PROVEN` n'apparaît que si au moins une échéance a été vérifiée. Un programme sans échéance reçoit « NO DEADLINE ».
+- **Le chargement.** La preuve porte sur les octets exacts qui seront chargés. Le vérificateur refuse toute écriture en mémoire qui pourrait toucher le code, y compris par l'alias d'adresse : la mémoire fait 512 octets, donc l'adresse 0x204 est l'adresse 0x4. Il produit un certificat avec l'empreinte SHA-256 de l'image, et les tests refusent de charger une image sans certificat valide.
+
+**Le résultat.** Les dix pièges sont refusés, avec le bon motif. Les cinq démos passent toujours, avec exactement les mêmes pires cas qu'avant (UART 18 cycles par bit, SPI 77), donc la calibration sur le RTL reste valable. La CI lance ces tests à chaque commit.
+
+**À retenir.** Un outil de preuve doit être testé comme le reste, avec des programmes faits pour le tromper. Des démos correctes ne suffisent pas : elles ne passent jamais par les trous.
+
+---
+
 ## Ce qui reste à faire
 
 1. Relire le compte rendu pour le jury (`docs/writeup.md`).

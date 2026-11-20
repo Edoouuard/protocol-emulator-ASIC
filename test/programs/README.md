@@ -14,3 +14,5 @@ Prebuilt binaries loaded by `test/test.py`, so the tests (including gate-level r
 After changing a program, rebuild it and copy `firmware/build/<name>.bin` here. `UART_BIT_CYCLES` and `I2C_Q` in `test.py` must match the build settings.
 
 Every binary here passes the timing proof (`tools/pinv_check.py`), and the tests check the same thing on the RTL: `DeadlineMonitor` fails a test if any WAIT_UNTIL is reached after its deadline.
+
+Rebuild all of them, with their proof certificates (`<name>.proof.json`): `./build.sh`. The tests refuse to load an image whose certificate does not match it byte for byte.

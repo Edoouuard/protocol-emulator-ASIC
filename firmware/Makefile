@@ -1,7 +1,7 @@
 # Build PinV programs with the standard RISC-V GNU toolchain.
 #   make                                  -> all demos with default settings
 #   make BIT_CYCLES=64 SPI_MODE=3         -> override build-time settings
-#   make CHECK=0                          -> skip the timing proof (not recommended)
+#   make CHECK=0                          -> skip the timing proof: no certificate, loaders refuse the image
 #
 # Every program is checked by tools/pinv_check.py after linking: if any
 # deadline could be missed, the build fails and no binary is produced.
@@ -39,11 +39,15 @@ build/%.elf: %.S uart.S pinv.h link.ld
 
 CHECK ?= 1
 
+# The checker proves the exact image that will be loaded and writes a proof
+# certificate next to it (build/<name>.proof.json: SHA-256 of the image and the
+# per-deadline results). Loaders refuse an image without a matching certificate.
 build/%.bin: build/%.elf
-ifeq ($(CHECK),1)
-	@python3 ../tools/pinv_check.py $< || (echo "timing not proven: $@ not built"; exit 1)
-endif
 	$(OBJCOPY) -O binary $< $@
+ifeq ($(CHECK),1)
+	@python3 ../tools/pinv_check.py $< --bin $@ --cert build/$*.proof.json \
+	    || (rm -f $@ build/$*.proof.json; echo "timing not proven: $@ not built"; exit 1)
+endif
 	@$(OBJDUMP) -d $< > build/$*.lst
 	@echo "$@: $$(stat -c %s $@) bytes"
 

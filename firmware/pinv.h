@@ -28,6 +28,12 @@
 #define SET_TIMER(start, step)    .insn r 0x0B, 6, 0, zero, start, step
 /* stall until counter reaches the deadline, then deadline += step; rd = counter */
 #define WAIT_TICK(rd)             .insn r 0x0B, 6, 1, rd, zero, zero
+/* WAIT_PIN gives up after `cycles` cycles (0 = wait forever, the reset value).
+ * A WAIT_PIN that gave up sets bit 16 of the next PIN_IN result. */
+#define SET_LIMIT(cycles)         .insn r 0x0B, 6, 2, zero, cycles, zero
+/* lock the program: the LOAD pin is ignored until the chip is reset */
+#define LOCK                      .insn r 0x0B, 6, 3, zero, zero, zero
+#define PIN_TIMED_OUT             0x10000
 /* at the deadline: output pin[idx] = data[0] (LSB first);  rd = data >> 1; deadline += step */
 #define SHIFT_OUT(rd, data, idx)  .insn r 0x0B, 7, 0, rd, data, idx
 /* at the deadline: output pin[idx] = data[31] (MSB first); rd = data << 1; deadline += step */

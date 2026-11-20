@@ -17,6 +17,13 @@
  *   6/0 SET.TIMER  rs1, rs2    deadline <= rs1; step <= rs2[15:0]
  *   6/1 WAIT.TICK  rd          stall until counter reaches deadline;
  *                              deadline <= deadline + step;      rd <= counter
+ *   6/2 SET.LIMIT  rs1         wait_max <= rs1[23:0]: a WAIT.PIN gives up after
+ *                              wait_max cycles (0 = wait forever, the reset value)
+ *   6/3 LOCK                   request the program lock (see project.v): from now
+ *                              on the LOAD pin is ignored until the chip is reset
+ *
+ * PIN.IN returns {15'b0, timed_out, pins}: timed_out is set when a WAIT.PIN
+ * gave up, and cleared when PIN.IN reads it.
  *
  * Shift group (funct3 = 7), fused "wait for the deadline, move one bit,
  * advance the deadline", selected by funct7 (bit 0: in, bit 1: MSB first):
@@ -55,7 +62,11 @@ module pinv_io (
 
     input  wire [15:0] pins_in,     // already synchronised
     output reg  [15:0] pins_out,
-    output reg  [7:0]  uio_oe
+    output reg  [7:0]  uio_oe,
+    output reg         lock_req     // one-cycle pulse when LOCK executes
+`ifdef PINV_IO_NI
+    , output wire [130:0] f_timing_state   // for the non-interference proof only
+`endif
 );
 
     localparam F_OUT        = 3'd0;
@@ -71,7 +82,7 @@ module pinv_io (
     wire [2:0] funct3     = pcpi_insn[14:12];
     wire [6:0] funct7     = pcpi_insn[31:25];
     wire       known      = funct3 <= F_WAIT_PIN
-                         || (funct3 == F_TIMER && funct7[6:1] == 6'd0)
+                         || (funct3 == F_TIMER && funct7[6:2] == 5'd0)
                          || (funct3 == F_SHIFT && funct7[6:2] == 5'd0);
     wire       mine       = pcpi_valid && is_custom0 && known;
 
@@ -87,6 +98,11 @@ module pinv_io (
 
     reg  [31:0] deadline;
     reg  [15:0] step;
+    reg  [23:0] wait_max;       // WAIT.PIN limit in cycles, 0 = no limit
+    reg         pin_waiting;    // a WAIT.PIN has started waiting
+    reg         pin_limited;    // ...with a limit
+    reg  [23:0] pin_left;       // ...cycles left before it gives up
+    reg         timed_out;      // sticky: a WAIT.PIN gave up (cleared by PIN.IN)
 
     wire [15:0] new_out = (pins_out & ~pcpi_rs2[15:0]) | (pcpi_rs1[15:0] & pcpi_rs2[15:0]);
     wire        tick_reached = !counter_before(counter, deadline);
@@ -99,6 +115,7 @@ module pinv_io (
     wire [7:0]  new_oe  = (uio_oe & ~pcpi_rs2[15:8]) | (pcpi_rs1[15:8] & pcpi_rs2[15:8]);
     wire        deadline_reached = !counter_before(counter, pcpi_rs1);
     wire        pins_match = ((pins_in ^ pcpi_rs2[15:0]) & pcpi_rs1[15:0]) == 16'd0;
+    wire        pin_expired = pin_waiting && pin_limited && pin_left == 24'd0;
 
     // Wrap-safe "a is before b" on a free-running 32-bit counter.
     function counter_before(input [31:0] a, input [31:0] b);
@@ -112,12 +129,18 @@ module pinv_io (
     always @(posedge clk) begin
         pcpi_ready <= 1'b0;
         pcpi_wr    <= 1'b0;
+        lock_req   <= 1'b0;
         if (!resetn) begin
             pins_out <= 16'd0;
             uio_oe   <= 8'd0;
             pcpi_rd  <= 32'd0;
             deadline <= 32'd0;
             step     <= 16'd0;
+            wait_max <= 24'd0;
+            pin_waiting  <= 1'b0;
+            pin_limited  <= 1'b0;
+            pin_left     <= 24'd0;
+            timed_out    <= 1'b0;
         end else if (mine && !pcpi_ready) begin
             case (funct3)
                 F_OUT: begin
@@ -127,7 +150,8 @@ module pinv_io (
                     pcpi_ready <= 1'b1;
                 end
                 F_IN: begin
-                    pcpi_rd    <= {16'd0, pins_in};
+                    pcpi_rd    <= {15'd0, timed_out, pins_in};
+                    timed_out  <= 1'b0;
                     pcpi_wr    <= 1'b1;
                     pcpi_ready <= 1'b1;
                 end
@@ -147,15 +171,34 @@ module pinv_io (
                     pcpi_wr    <= 1'b1;
                     pcpi_ready <= 1'b1;
                 end
-                F_WAIT_PIN: if (pins_match) begin
+                F_WAIT_PIN: if (pins_match || pin_expired) begin
+                    if (!pins_match) timed_out <= 1'b1;
+                    pin_waiting <= 1'b0;
                     pcpi_rd    <= counter;
                     pcpi_wr    <= 1'b1;
                     pcpi_ready <= 1'b1;
+                end else if (!pin_waiting) begin
+                    // first cycle without a match: start the countdown
+                    pin_waiting  <= 1'b1;
+                    pin_limited  <= wait_max != 24'd0;
+                    pin_left     <= wait_max - 24'd1;
+                end else begin
+                    pin_left     <= pin_left - 24'd1;
                 end
-                F_TIMER: if (!funct7[0]) begin              // SET.TIMER
+                F_TIMER: if (funct7[1:0] == 2'd0) begin     // SET.TIMER
                     deadline   <= pcpi_rs1;
                     step       <= pcpi_rs2[15:0];
                     pcpi_rd    <= pcpi_rs1;
+                    pcpi_wr    <= 1'b1;
+                    pcpi_ready <= 1'b1;
+                end else if (funct7[1:0] == 2'd2) begin     // SET.LIMIT
+                    wait_max   <= pcpi_rs1[23:0];
+                    pcpi_rd    <= pcpi_rs1;
+                    pcpi_wr    <= 1'b1;
+                    pcpi_ready <= 1'b1;
+                end else if (funct7[1:0] == 2'd3) begin     // LOCK
+                    lock_req   <= 1'b1;
+                    pcpi_rd    <= 32'd0;
                     pcpi_wr    <= 1'b1;
                     pcpi_ready <= 1'b1;
                 end else if (tick_reached) begin            // WAIT.TICK
@@ -175,6 +218,12 @@ module pinv_io (
             endcase
         end
     end
+
+`ifdef PINV_IO_NI
+    // Everything that decides *when* the unit answers and moves the deadline.
+    assign f_timing_state = {counter, deadline, step, wait_max, pin_waiting, pin_limited,
+                             pin_left, pcpi_ready};
+`endif
 
 `ifdef PINV_IO_FORMAL
 `include "pinv_io_props.vh"

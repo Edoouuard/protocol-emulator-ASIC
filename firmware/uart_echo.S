@@ -8,6 +8,9 @@
     .section .text.start
     .globl _start
 _start:
+#ifdef PINV_LOCKED
+    LOCK                    /* from here on, LOAD is ignored until reset */
+#endif
     call uart_init
     la   a2, hello
 1:  lbu  a0, 0(a2)

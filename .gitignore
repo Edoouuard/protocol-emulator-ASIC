@@ -20,3 +20,6 @@ formal/*_cover/
 formal/pinv_io/
 formal/pinv_loader/
 formal/top/
+formal/pinv_io_core/
+formal/pinv_io_bound/
+formal/pinv_io_ni/

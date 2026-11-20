@@ -171,9 +171,29 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 11. La cyber, prouvée
+
+**L'idée.** La preuve formelle ne sert pas qu'à vérifier que le circuit fonctionne. Elle peut aussi démontrer qu'il résiste à certaines attaques, à condition de dire précisément lesquelles.
+
+**Trois protections ajoutées, chacune prouvée :**
+1. **Attentes bornées (contre le déni de service).** Avant, un composant malveillant qui retenait une ligne I2C bloquait la puce pour toujours. Maintenant, `SET_LIMIT` fixe une durée maximale d'attente. La preuve démontre qu'aucune attente limitée ne la dépasse, quoi qu'il arrive sur les broches. Un test simule un composant qui bloque l'horloge pour toujours : la puce termine et affiche `#`.
+2. **Le verrou du programme (contre le remplacement ou l'arrêt).** Après `LOCK`, la broche de chargement est ignorée jusqu'au redémarrage. La preuve tient même face à un processeur qui ferait n'importe quoi : le chargeur n'écrit plus, et le processeur ne peut plus être arrêté de l'extérieur.
+3. **Non-interférence du minutage (contre l'espionnage par le temps).** On fait tourner deux copies du circuit avec les mêmes instructions mais des données différentes, et on prouve qu'elles répondent toujours aux mêmes cycles. L'instant où un bit sort ne dépend donc pas de sa valeur : un attaquant qui chronomètre les signaux n'apprend rien.
+
+**Comment on sait que ça tient.** Quatre bugs volontaires (une limite ignorée, un abandon un cycle trop tard, un minutage qui dépend de la donnée, un verrou contourné) ont chacun été attrapés avec un contre-exemple concret.
+
+**Ce qui a coincé.**
+- Le solveur Z3 bloquait, même sans aucune propriété à prouver. En comparant l'ancienne et la nouvelle version du circuit, on a isolé la logique de délai maximal. Le vrai coupable était cette version ancienne de Z3 : avec le solveur Yices, chaque preuve passe en une seconde environ.
+- Une propriété vraie ne passait pas l'induction, faute d'information. Il a fallu l'énoncer plus précisément : une attente sur broche n'existe que pendant une instruction `WAIT_PIN` en cours.
+- Le vérificateur de minutage a encore refusé un binaire : trois instructions ajoutées avaient décalé le code, et le segment le plus lent de l'I2C dépassait son budget de 2 cycles.
+
+**Ce que la preuve ne couvre pas, et qu'il faut écrire dans le dossier.** Les attaques physiques (perturbation de tension ou d'horloge, laser, mesure de la consommation), le processeur PicoRV32 lui-même (réutilisé tel quel), les propriétés qu'on n'a pas pensé à écrire, et les pertes au niveau du protocole.
+
+---
+
 ## Ce qui reste à faire
 
 1. Faire passer la fabrication virtuelle à 40 MHz, puis la simulation sur le dessin final (les vraies portes logiques).
-2. Améliorer si le temps le permet : I2C plus rapide, délai maximal sur `WAIT_PIN`, état de démarrage configurable des sorties, une démo de pare-feu de bus SPI.
+2. Le sérialiseur à formes d'onde (protocoles rapides, LED WS2812), la démo de pare-feu de bus SPI, l'état de démarrage configurable des sorties.
 3. Rédiger le compte rendu pour le jury.
 4. Soumettre avant le 18 janvier 2027.

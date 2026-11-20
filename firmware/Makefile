@@ -22,7 +22,7 @@ SPI_MODE   ?= 0
 SPI_HALF   ?= 80
 I2C_Q      ?= 94
 
-DEFS   := -DBIT_CYCLES=$(BIT_CYCLES) -DSPI_MODE=$(SPI_MODE) -DSPI_HALF=$(SPI_HALF) -DI2C_Q=$(I2C_Q)
+DEFS   := -DBIT_CYCLES=$(BIT_CYCLES) -DSPI_MODE=$(SPI_MODE) -DSPI_HALF=$(SPI_HALF) -DI2C_Q=$(I2C_Q) $(EXTRA)
 CFLAGS := -march=rv32ec -mabi=ilp32e -nostdlib -nostartfiles -Os -I. -T link.ld $(DEFS)
 
 PROGRAMS := uart_echo spi_jedec i2c_read

@@ -282,7 +282,7 @@ async def test_spi_mode3(dut):
 # I2C: simulated device with one register, open-drain bus, clock stretching
 # ---------------------------------------------------------------------------
 
-I2C_Q = 56  # must match the I2C_Q the program was built with
+I2C_Q = 60  # must match the I2C_Q the program was built with
 
 
 class I2cDevice:
@@ -418,3 +418,60 @@ async def test_i2c_nack(dut):
     text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
     assert dev.log == ["START", ("addr", 0xD0, "NACK"), "STOP"], f"unexpected {dev.log}"
     assert text == b"!", f"unexpected output {text!r}"
+
+
+@cocotb.test()
+async def test_i2c_stuck_bus(dut):
+    """Security: a device that holds SCL low forever cannot hang the chip.
+    Every wait on SCL is bounded; the program finishes and reports '#'."""
+    await reset(dut)
+    set_ui_bit(dut, 0, 1)
+    rec = EdgeRecorder(dut, 0)
+    dev = I2cDevice(dut, 0x68, {0x75: 0x71})
+    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    # let the address byte go through, then hold SCL low for good
+    await ClockCycles(dut.clk, 60 * I2C_Q)
+    dut.scl_dev_low.value = 1
+    await ClockCycles(dut.clk, 60000)
+    text, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
+    dut._log.info(f"I2C log {dev.log}, UART {text!r}")
+    assert text == b"#", f"expected the stuck-bus report, got {text!r}"
+
+
+@cocotb.test()
+async def test_lock(dut):
+    """Security: once the program has executed LOCK, the LOAD pin is ignored:
+    the program can neither be replaced nor stopped from outside."""
+    await reset(dut)
+    set_ui_bit(dut, 0, 1)
+    await load_program(dut, (PROGRAMS / "uart_echo_locked.bin").read_bytes())
+    await ClockCycles(dut.clk, UART_BIT_CYCLES * 10 * 8)   # "Hello\n" sent
+
+    # Try to load another program; watch that the core is never held in reset.
+    stopped = []
+
+    async def watch():
+        while True:
+            await RisingEdge(dut.clk)
+            if int(dut.user_project.core_resetn.value) == 0:
+                stopped.append(1)
+
+    w = cocotb.start_soon(watch())
+    await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
+    w.cancel()
+    assert not stopped, "LOAD stopped the core although the chip is locked"
+    assert int(dut.user_project.locked.value) == 1
+
+    # The original program still runs: it echoes.
+    rec = EdgeRecorder(dut, 0)
+    await send_uart_byte(dut, ord("K"), UART_BIT_CYCLES)
+    await ClockCycles(dut.clk, UART_BIT_CYCLES * 12 + 300)
+    echo, _ = decode_uart(rec.edges, UART_BIT_CYCLES)
+    assert echo == b"K", f"locked program no longer echoes: {echo!r}"
+
+    # A reset unlocks the chip.
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+    assert int(dut.user_project.locked.value) == 0

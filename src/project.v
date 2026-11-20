@@ -6,7 +6,8 @@
  * PicoRV32 (RV32EC) + on-chip program/data memory + pin/timing unit + loader.
  *
  * Pins:
- *   ui_in[7]   LOAD  (high: core in reset, loader active)
+ *   ui_in[7]   LOAD  (high: core in reset, loader active; ignored once the
+ *              program has executed LOCK, until the next reset)
  *   ui_in[6]   SCK   loader clock    (free for programs when LOAD is low)
  *   ui_in[5]   MOSI  loader data     (free for programs when LOAD is low)
  *   ui_in[4:0], uo_out[7:0], uio[7:0]: general purpose, driven by the program.
@@ -35,7 +36,16 @@ module tt_um_edoouuard_protoemu #(
         in_s1 <= {uio_in, ui_in};
         in_s2 <= in_s1;
     end
-    wire load = in_s2[7];
+    // ---- Program lock --------------------------------------------------
+    // Once the program executes LOCK, the LOAD pin is ignored until the chip
+    // is reset: the program can no longer be stopped or replaced from outside.
+    wire lock_req;
+    reg  locked;
+    always @(posedge clk) begin
+        if (!rst_n)        locked <= 1'b0;
+        else if (lock_req) locked <= 1'b1;
+    end
+    wire load = in_s2[7] && !locked;
 
     // ---- Core reset ----------------------------------------------------
     reg core_resetn;
@@ -119,7 +129,8 @@ module tt_um_edoouuard_protoemu #(
         .pcpi_rs1(pcpi_rs1), .pcpi_rs2(pcpi_rs2),
         .pcpi_wr(pcpi_wr), .pcpi_rd(pcpi_rd),
         .pcpi_wait(pcpi_wait), .pcpi_ready(pcpi_ready),
-        .pins_in(in_s2), .pins_out(pins_out), .uio_oe(oe)
+        .pins_in(in_s2), .pins_out(pins_out), .uio_oe(oe),
+        .lock_req(lock_req)
     );
 
     assign uo_out  = pins_out[7:0];

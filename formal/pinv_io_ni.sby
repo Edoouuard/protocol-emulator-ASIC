@@ -1,0 +1,23 @@
+# Non-interference proof of the PinV pin/timing unit (timing independent of data).
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 3
+cover: mode cover
+cover: depth 8
+
+[engines]
+prove: smtbmc yices
+cover: smtbmc yices
+
+[script]
+read -formal -DPINV_IO_NI pinv_io.v
+read -formal pinv_io_ni.sv
+prep -top pinv_io_ni
+
+[files]
+../src/pinv_io.v
+pinv_io_ni.sv

@@ -13,12 +13,15 @@ module pinv_io (
     output wire        pcpi_wait, pcpi_ready,
     input  wire [15:0] pins_in,
     output wire [15:0] pins_out,
-    output wire [7:0]  uio_oe
+    output wire [7:0]  uio_oe,
+    output wire        lock_req
 );
     (* anyseq *) reg        f_wr, f_wait, f_ready;
     (* anyseq *) reg [31:0] f_rd;
     (* anyseq *) reg [15:0] f_out;
     (* anyseq *) reg [7:0]  f_oe;
+    (* anyseq *) reg        f_lock;
+    assign lock_req = f_lock;
     assign pcpi_wr = f_wr; assign pcpi_rd = f_rd; assign pcpi_wait = f_wait;
     assign pcpi_ready = f_ready; assign pins_out = f_out; assign uio_oe = f_oe;
 endmodule

@@ -19,6 +19,15 @@
 
         // T3. When LOAD is low and the chip is out of reset, the core runs.
         if ($past(!load && rst_n)) assert (core_resetn);
+
+        // K1. Once locked, the chip stays locked until it is reset.
+        if ($past(locked) && $past(rst_n)) assert (locked);
+        if (!$past(rst_n)) assert (!locked);
+        // K2. Once locked, the LOAD pin has no effect: whatever it does, the loader
+        // never writes and the core is never stopped. The program can neither be
+        // replaced nor halted from outside until the next reset.
+        if ($past(locked)) assert (!ld_we);
+        if ($past(locked) && $past(rst_n)) assert (core_resetn);
     end
 
     // Covers (reachability, so the proof is not vacuous). Loader writes themselves
@@ -26,4 +35,5 @@
     always @(posedge clk) if (f_past && rst_n) begin
         cover ($past(load) && !core_resetn);            // held in reset by LOAD
         cover ($past(!core_resetn) && core_resetn);     // core released after loading
+        cover (locked && $past(in_s2[7]) && core_resetn); // LOAD high but ignored
     end

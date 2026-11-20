@@ -6,6 +6,8 @@ Entry for the [Jane Street × Tiny Tapeout Protocol Emulator ASIC Competition](h
 
 PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V core (RV32EC) plus pin, deadline and fused shift instructions. Protocols are written as ordinary programs and built with the standard RISC-V GNU toolchain; every edge is anchored on an absolute cycle-counter deadline, so bit timing is exact.
 
+**Secure by proof.** A device cannot hang the chip (bounded waits), a locked program cannot be replaced or stopped from outside, and the moment a bit leaves the chip does not depend on its value (timing non-interference): each is proven formally. See the security table in [`docs/architecture.md`](docs/architecture.md).
+
 **Timing is proven, not just tested.** The hardware timing contract (zero-jitter `WAIT_UNTIL`, exact `PIN_OUT`, safe loading) is proven formally with SymbiYosys (`formal/`). On top of it, `tools/pinv_check.py` analyses every path of a program and proves, before it is loaded, that no deadline can be missed. The build refuses a program it cannot prove. Its cost model is calibrated on the RTL and matches the simulation to the cycle.
 
 - Target: IHP 130 nm CMOS5L via Tiny Tapeout, 8x4 tiles.
@@ -24,6 +26,7 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 | Static timing proof of every program (`pinv_check`), validated on the RTL | ✅ |
 | Formal proof of the pin/timing unit, loader and top level (SymbiYosys) | ✅ |
 | Fused timer/shift instructions: UART 2.4× faster (proven 18 cycles per bit, was 44) | ✅ |
+| Security: bounded waits, program lock, timing non-interference — all proven | ✅ |
 | GDS + precheck passing | ⏳ first run pending |
 | Base ISA tests, gate-level simulation | ⏳ |
 | Write-up | ⏳ |

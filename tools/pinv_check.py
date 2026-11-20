@@ -70,7 +70,7 @@ ALU_IMM_OPS = {"addi", "andi", "ori", "xori", "slti", "sltiu", "lui", "auipc",
                "c.li", "c.lui", "c.addi", "c.andi", "c.addi16sp", "c.addi4spn", "c.nop"}
 
 CUSTOM = {0: "PIN_OUT", 1: "PIN_IN", 2: "PIN_DIR", 3: "TIME", 4: "WAIT_UNTIL", 5: "WAIT_PIN"}
-TIMER = {0: "SET_TIMER", 1: "WAIT_TICK"}
+TIMER = {0: "SET_TIMER", 1: "WAIT_TICK", 2: "SET_LIMIT", 3: "LOCK"}
 SHIFT = {0: "SHIFT_OUT", 1: "SHIFT_IN", 2: "SHIFT_OUTM", 3: "SHIFT_INM"}
 # Instructions that wait for a deadline: they end a timed segment, and start the next one.
 DEADLINE_WAITS = {"WAIT_UNTIL", "WAIT_TICK", "SHIFT_OUT", "SHIFT_IN", "SHIFT_OUTM", "SHIFT_INM"}

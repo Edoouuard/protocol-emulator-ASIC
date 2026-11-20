@@ -9,6 +9,10 @@
  * waits until the line is really high (clock stretching) and re-anchors
  * its deadlines on that moment.
  *
+ * Every wait for SCL to rise is bounded (SET_LIMIT): a device that holds SCL
+ * low forever cannot hang the chip. The transaction then completes in bounded
+ * time and the program prints '#' instead of the value.
+ *
  * I2C_Q = a quarter of an SCL period, in clock cycles. Measured in
  * simulation: SCL high = 2*I2C_Q + about 14 cycles; SCL low is at least
  * about 77 cycles (code time).  I2C_Q = 94 gives about 100 kHz at 40 MHz;
@@ -25,6 +29,9 @@
 #endif
 #ifndef I2C_REG
 #define I2C_REG 0x75
+#endif
+#ifndef I2C_LIMIT
+#define I2C_LIMIT 4000              /* max clock stretching, cycles (100 us at 40 MHz) */
 #endif
 
 #define SDA 0x100
@@ -65,6 +72,9 @@
 _start:
     call uart_init
     li   s1, I2C_Q
+    li   a0, I2C_LIMIT
+    SET_LIMIT(a0)
+    PIN_IN(zero)                  /* clear the timeout flag */
 
     call i2c_start
     li   a0, (I2C_ADDR << 1) | 0  /* address + write */
@@ -81,11 +91,23 @@ _start:
     call i2c_read
     mv   a2, a0
     call i2c_stop
+    PIN_IN(a0)                    /* did any wait on SCL give up? */
+    li   a1, PIN_TIMED_OUT
+    and  a0, a0, a1
+    bnez a0, stuck
     mv   a0, a2
+    call uart_tx
+    j    done
+stuck:
+    li   a0, '#'
     call uart_tx
     j    done
 nack:
     call i2c_stop
+    PIN_IN(a0)                    /* a stuck bus can look like a NACK */
+    li   a1, PIN_TIMED_OUT
+    and  a0, a0, a1
+    bnez a0, stuck
     li   a0, '!'
     call uart_tx
 done:

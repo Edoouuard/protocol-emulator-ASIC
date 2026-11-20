@@ -34,6 +34,11 @@
 /* lock the program: the LOAD pin is ignored until the chip is reset */
 #define LOCK                      .insn r 0x0B, 6, 3, zero, zero, zero
 #define PIN_TIMED_OUT             0x10000
+/* PULSE widths in cycles: t0 for a 0 bit, t1 for a 1 bit; reg = (t1 << 16) | t0 */
+#define SET_WAVE(widths)          .insn r 0x0B, 6, 4, zero, widths, zero
+/* idle state: outputs = out[15:0], directions = oe[15:8] whenever the core is
+ * held in reset (program reload); cleared only by a chip reset */
+#define SET_IDLE(out, oe)         .insn r 0x0B, 6, 5, zero, out, oe
 /* at the deadline: output pin[idx] = data[0] (LSB first);  rd = data >> 1; deadline += step */
 #define SHIFT_OUT(rd, data, idx)  .insn r 0x0B, 7, 0, rd, data, idx
 /* at the deadline: output pin[idx] = data[31] (MSB first); rd = data << 1; deadline += step */
@@ -42,6 +47,11 @@
 #define SHIFT_IN(rd, data, idx)   .insn r 0x0B, 7, 1, rd, data, idx
 /* at the deadline: rd = {data[30:0], pin[idx]} (MSB first); deadline += step */
 #define SHIFT_INM(rd, data, idx)  .insn r 0x0B, 7, 3, rd, data, idx
+/* at the deadline: pin[idx] = 1, back to 0 by itself after data[0] ? t1 : t0 cycles;
+ * rd = data >> 1; deadline += step (waveform serializer, LSB first) */
+#define PULSE(rd, data, idx)      .insn r 0x0B, 7, 4, rd, data, idx
+/* same, MSB first: width from data[31]; rd = data << 1 */
+#define PULSEM(rd, data, idx)     .insn r 0x0B, 7, 6, rd, data, idx
 
 /*
  * Timing budget, read by tools/pinv_check.py (not loaded on the chip).

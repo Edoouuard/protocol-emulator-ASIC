@@ -27,27 +27,27 @@ project:
 pinout:
   # Inputs
   ui[0]: "GPIO in 0 (UART RX in demo)"
-  ui[1]: "GPIO in 1"
-  ui[2]: "GPIO in 2"
-  ui[3]: "GPIO in 3"
-  ui[4]: "GPIO in 4"
+  ui[1]: "GPIO in 1 (SPI MISO from flash in demos)"
+  ui[2]: "GPIO in 2 (firewall: host SCK)"
+  ui[3]: "GPIO in 3 (firewall: host MOSI)"
+  ui[4]: "GPIO in 4 (firewall: host CS_n)"
   ui[5]: "LOADER MOSI / GPIO in 5"
   ui[6]: "LOADER SCK / GPIO in 6"
   ui[7]: "LOAD (high = program load, core held in reset)"
 
   # Outputs
   uo[0]: "GPIO out 0 (UART TX in demo)"
-  uo[1]: "GPIO out 1"
-  uo[2]: "GPIO out 2"
-  uo[3]: "GPIO out 3"
-  uo[4]: "GPIO out 4"
+  uo[1]: "GPIO out 1 (SPI SCK / WS2812 DIN in demos)"
+  uo[2]: "GPIO out 2 (SPI MOSI in demos)"
+  uo[3]: "GPIO out 3 (SPI CS_n in demos)"
+  uo[4]: "GPIO out 4 (firewall: host MISO)"
   uo[5]: "GPIO out 5"
   uo[6]: "GPIO out 6"
   uo[7]: "GPIO out 7"
 
   # Bidirectional pins
-  uio[0]: "GPIO bidir 0"
-  uio[1]: "GPIO bidir 1"
+  uio[0]: "GPIO bidir 0 (I2C SDA in demo)"
+  uio[1]: "GPIO bidir 1 (I2C SCL in demo)"
   uio[2]: "GPIO bidir 2"
   uio[3]: "GPIO bidir 3"
   uio[4]: "GPIO bidir 4"

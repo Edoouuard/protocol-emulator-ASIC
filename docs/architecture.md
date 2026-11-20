@@ -1,6 +1,6 @@
-# PinV architecture (v0.1)
+# PinV architecture (v0.2)
 
-> Status: first working version in simulation. Area and timing still to be confirmed by the Tiny Tapeout GDS flow.
+> Status: full Tiny Tapeout flow passes at 40 MHz on IHP SG13CMOS5L (GDS, precheck, gate-level tests).
 
 ## Idea in one sentence
 
@@ -44,6 +44,12 @@ Timer and fused shift instructions (funct3 = 6 and 7, variant in funct7). The un
 | 7/3 | `SHIFT_INM rd, data, idx` | same, MSB first: rd ← {data[30:0], pin idx} |
 | 6/2 | `SET_LIMIT cycles` | a `WAIT_PIN` gives up after `cycles` cycles (24 bits; 0 = wait forever, the reset value) |
 | 6/3 | `LOCK` | lock the program: the LOAD pin is ignored until the chip is reset |
+| 6/4 | `SET_WAVE widths` | pulse widths for `PULSE`: t0 ← widths[15:0], t1 ← widths[31:16] |
+| 6/5 | `SET_IDLE out, oe` | idle state: outputs ← out[15:0] and directions ← oe[15:8] whenever the core is held in reset (program reload); cleared only by a chip reset |
+| 7/4 | `PULSE rd, data, idx` | at the deadline, pin idx ← 1; the unit drives it back to 0 by itself after t = data[0] ? t1 : t0 cycles; rd ← data >> 1; deadline += step |
+| 7/6 | `PULSEM rd, data, idx` | same, MSB first: t from data[31]; rd ← data << 1 |
+
+`PULSE` is a waveform serializer. Both edges of a bit are placed by the hardware: the rising edge at the deadline, the falling edge exactly t cycles later, whatever the core does in between. One instruction per bit is enough for pulse-width codes (WS2812 LEDs, 1-Wire-like lines, IR remotes). One pulse is in flight at a time: a new `PULSE` first ends the previous one.
 
 `PIN_IN` returns `{15'b0, timed_out, pins}`: `timed_out` (bit 16, `PIN_TIMED_OUT` in `pinv.h`) is set when a `WAIT_PIN` gave up and cleared when `PIN_IN` reads it.
 
@@ -81,11 +87,11 @@ Scope and assumptions: the cost model holds for PinV's configuration (single-cyc
 
 ## Formal proof of the hardware
 
-`pinv_check` assumes the hardware keeps its contract (for instance, that `WAIT_UNTIL` releases the core exactly at the deadline). That contract is proven with SymbiYosys and Z3 (`formal/`, `make -C formal`), by k-induction, for every reachable state and every input sequence:
+`pinv_check` assumes the hardware keeps its contract (for instance, that `WAIT_UNTIL` releases the core exactly at the deadline). That contract is proven with SymbiYosys and Yices (`formal/`, `make -C formal`), by k-induction, for every reachable state and every input sequence:
 
 | Module | Proven |
 |---|---|
-| `pinv_io` | internal deadline advances by exactly one step at each `WAIT_TICK`/`SHIFT_*`, is set only by `SET_TIMER`, never drifts; `SHIFT_OUT` drives exactly the selected pin with the outgoing bit; shift results move exactly one bit and sample the selected pin; counter advances by exactly 1 per cycle; exactly one answer per instruction; every instruction completes in the cycle right after its condition holds; **zero jitter**: a `WAIT_UNTIL`, `WAIT_TICK` or `SHIFT_*` whose deadline is in the future releases when the counter equals the deadline; `WAIT_*`/`TIME` return the release cycle; `PIN_OUT` changes exactly the masked bits one cycle later, and nothing else changes the outputs; only `PIN_DIR` changes directions; reset state |
+| `pinv_io` | internal deadline advances by exactly one step at each `WAIT_TICK`/`SHIFT_*`, is set only by `SET_TIMER`, never drifts; `SHIFT_OUT` drives exactly the selected pin with the outgoing bit; shift results move exactly one bit and sample the selected pin; counter advances by exactly 1 per cycle; exactly one answer per instruction; every instruction completes in the cycle right after its condition holds; **zero jitter**: a `WAIT_UNTIL`, `WAIT_TICK` or `SHIFT_*` whose deadline is in the future releases when the counter equals the deadline; `WAIT_*`/`TIME` return the release cycle; `PIN_OUT` changes exactly the masked bits one cycle later, and nothing else changes the outputs except the falling edge of a pulse; only `PIN_DIR` changes directions; **exact pulse width**: a `PULSE` raises the selected pin and ends exactly t cycles later, with t chosen by the data bit, and its falling edge is never lost whatever instruction runs meanwhile; the widths change only by `SET_WAVE`; reset state: the idle state during a reload, all zero after a chip reset; the idle state is set only by `SET_IDLE` and survives reloads |
 | `pinv_io` (bounded group) | a `WAIT_PIN` with a limit never waits longer than it; without a limit it only ends on a match; the limit changes only by `SET_LIMIT`; `timed_out` is set exactly when a wait gives up, reported and cleared by `PIN_IN`; `LOCK` raises the lock request for exactly one cycle |
 | `pinv_io` × 2 (non-interference) | same instructions and timing operands, arbitrary different data: identical timing state and answer cycles forever |
 | `pinv_loader` | writes only in load mode after the 8th SCK edge; each load starts at address 0; addresses advance by exactly one per byte; the written byte is the one shifted in |
@@ -93,7 +99,7 @@ Scope and assumptions: the cost model holds for PinV's configuration (single-cyc
 
 The PicoRV32 side of the PCPI handshake is modelled by assumptions (operands stable while waiting, request kept while told to wait, dropped after the answer). For the top level, PicoRV32 and the pin/timing unit are replaced by stand-ins with completely free outputs (`formal/picorv32_free.v`, `formal/pinv_io_free.v`), which over-approximate any behaviour of both; the unit is proven on its own.
 
-Covers show that the key situations are reachable (no vacuous proof). Mutation check: ten injected bugs — the six below plus a limit that is ignored, a wait that gives up one cycle too late, a deadline that depends on the data bit, and a bypassed lock — each make the proof fail with a concrete counterexample. The first six: (release one cycle early, ignore the `PIN_OUT` mask, answer twice, a `SHIFT` that does not advance the deadline, `SHIFT_OUT` on the wrong pin, a tick released one cycle early) each make the proof fail on the expected property, with a concrete counterexample from bounded model checking.
+Covers show that the key situations are reachable (no vacuous proof). Mutation check: fifteen injected bugs — a pulse that falls one cycle early, a countdown that skips, swapped widths, a pulse in flight that is never ended, an idle state ignored on reload — plus ten earlier ones — the six below plus a limit that is ignored, a wait that gives up one cycle too late, a deadline that depends on the data bit, and a bypassed lock — each make the proof fail with a concrete counterexample. The first six: (release one cycle early, ignore the `PIN_OUT` mask, answer twice, a `SHIFT` that does not advance the deadline, `SHIFT_OUT` on the wrong pin, a tick released one cycle early) each make the proof fail on the expected property, with a concrete counterexample from bounded model checking.
 
 Together: the formal proof establishes the hardware timing contract; `pinv_check` proves each program respects it.
 
@@ -104,7 +110,9 @@ Together: the formal proof establishes the hardware timing contract; `pinv_check
 | A device holds a line forever (denial of service) | `SET_LIMIT` bounds `WAIT_PIN`; sticky `timed_out` flag | **proven**: a limited `WAIT_PIN` never waits longer than its limit, whatever the pins do; without a limit it only ends on a match. Tested: the I2C demo reports `#` when SCL is held low forever |
 | Replacing or halting the program from outside | `LOCK`; LOAD ignored until reset | **proven** at top level (any core behaviour, any pin sequence): once locked, the loader never writes and the core is never held in reset; unlocked only by reset. Tested |
 | Code injection while running | loader writes only while the core is held in reset | **proven** |
-| Timing side channel on the pins | deadline-anchored I/O | **proven** by self-composition (`formal/pinv_io_ni.sv`): two copies of the unit fed the same instructions and timing operands but arbitrary different data keep identical timing state (counter, deadline, step, limits) and answer at the same cycles, so when a bit leaves does not depend on its value. For a whole program, `pinv_check` proves no deadline is missed, so every edge sits on its deadline whatever the data |
+| Rogue commands on a bus PinV guards | `spi_firewall.S`: allowlist of SPI flash opcodes | **tested**: write enable, page program and erase from the host never reach the flash (it does not see one bit) and are logged on the UART; reads still pass. The firewall locks itself, so the host cannot reload PinV to remove it |
+| Glitches on control lines during a reload | `SET_IDLE` | **proven**: while the core is held in reset, outputs and directions hold the idle state chosen by the program (for example, a flash chip select kept high), not zero |
+| Timing side channel on the pins | deadline-anchored I/O | **proven** by self-composition (`formal/pinv_io_ni.sv`): two copies of the unit fed the same instructions and timing operands but arbitrary different data keep identical timing state (counter, deadline, step, limits) and answer at the same cycles, so when a bit leaves does not depend on its value. `PULSE` is the one deliberate exception: the width of a pulse is the data, by design. For a whole program, `pinv_check` proves no deadline is missed, so every edge sits on its deadline whatever the data |
 
 Out of scope, stated plainly: physical attacks (voltage or clock glitching, laser fault injection, power and electromagnetic side channels, probing); PicoRV32 itself, used unmodified and not re-proven here; properties nobody wrote down; protocol-level loss (the UART echo cannot receive while it transmits).
 
@@ -114,12 +122,14 @@ Solver note: the proofs run with Yices (`pip install yices-solver`). Z3 4.8.12, 
 
 ## Demo programs
 
-All three are in `firmware/` and are tested end to end in `test/test.py` against simulated devices.
+All five are in `firmware/` and are tested end to end in `test/test.py` against simulated devices.
 
 | Program | Pins | What it does | Measured in simulation |
 |---|---|---|---|
 | `uart_echo.S` | TX `uo[0]`, RX `ui[0]` | prints `Hello`, then echoes | timing proven for ≥ 18 cycles per bit (~2.2 Mbaud at 40 MHz), with `SHIFT_OUT`/`SHIFT_IN`; 44 cycles with the separate `WAIT_UNTIL` + `PIN_OUT` version |
 | `spi_jedec.S` | SCK `uo[1]`, MOSI `uo[2]`, CS_n `uo[3]`, MISO `ui[1]` | reads a flash JEDEC ID (0x9F), prints it | modes 0-3; timing proven for `SPI_HALF` ≥ 77 (~260 kHz at 40 MHz) |
+| `ws2812.S` | DIN `uo[1]` | drives 4 WS2812 RGB LEDs, rotates the colours every frame | one `PULSEM` per bit; every pulse 16 or 32 cycles and every period 50 cycles, exact to the cycle; timing proven for a period ≥ 39 cycles |
+| `spi_firewall.S` | host SCK/MOSI/CS_n `ui[2..4]`, MISO `uo[4]`; flash SCK/MOSI/CS_n `uo[1..3]`, MISO `ui[1]`; log TX `uo[0]` | SPI bus firewall between a host and its flash: reads pass, writes and erases are dropped and logged | host SCK half period ≥ 600 cycles (33 kHz at 40 MHz): the opcode is checked, then replayed to the flash |
 | `i2c_read.S` | SDA `uio[0]`, SCL `uio[1]` (open drain) | reads one register with repeated START, prints it; prints `!` on NACK | clock stretching handled; timing proven for `I2C_Q` ≥ 54 (~160 kHz at 40 MHz); default ~100 kHz |
 
 I2C uses `PIN_DIR` for open drain: the output value stays 0 and the pin is either driven low (output enabled) or released (input), with external pull-ups. After releasing SCL the program waits with `WAIT_PIN` until the line is actually high, which handles clock stretching, and re-anchors its deadlines on that moment.
@@ -136,14 +146,15 @@ When LOAD is low, `ui_in[5]` and `ui_in[6]` are ordinary inputs again. After a r
 
 - 512 bytes of memory: enough for UART/SPI/I2C routines, tight for C code with a stack.
 - Single-threaded: one protocol loop at a time; the UART echo cannot receive while transmitting.
-- Outputs reset to 0, so an active-low chip select is asserted until the program sets it. A configurable reset value is a candidate fix.
+- Outputs reset to 0 after a chip reset, so an active-low chip select is asserted until the program runs. `SET_IDLE` fixes it for every reload after the first.
+- The SPI firewall mirrors the bus in software: the host clock is limited to about 33 kHz at 40 MHz.
 - I2C fast mode (400 kHz) is not reached at 40 MHz (about 160 kHz with proven timing); the bit loop needs optimising.
+- One pulse in flight at a time: `PULSE` drives one pin per bit.
 - First GDS run (50 MHz target): full layout completed at about 43% utilisation, but setup timing failed post-route in the slow corner (1.08 V, 125 °C), after about 5,200 hold buffers were inserted, mostly around the flip-flop memory. Target lowered to 40 MHz (`CLOCK_PERIOD` = 25 ns in `src/config.json`, which sets the timing constraint; `clock_hz` in `info.yaml` is documentation only). A latch-based memory would cut area, run time and hold fixing.
 
 ## Roadmap
 
-1. Confirm area and timing with the GDS flow; tune `clock_hz` and memory size.
-2. Reach I2C 400 kHz; a shift-and-output instruction if loops stay too slow.
-3. Timeout on `WAIT_PIN`; configurable output reset value.
-4. Base ISA tests (`riscv-tests`) and gate-level simulation.
-5. A protocol written after the design is frozen (e.g. WS2812 or PS/2) to demonstrate flexibility.
+1. Latch-based memory: less area, fewer hold buffers, a shorter flow.
+2. I2C 400 kHz.
+3. `riscv-formal` on the PicoRV32 configuration, and equivalence between the RTL and the netlist.
+4. A hardware fast path for the SPI firewall.

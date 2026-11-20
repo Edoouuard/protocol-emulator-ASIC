@@ -52,7 +52,7 @@ class DeadlineMonitor:
             if not int(self.dut.user_project.core_resetn.value):
                 active, anchor = False, None
                 continue
-            tick = (f3 == F_TIMER and (f7 & 1)) or f3 == F_SHIFT
+            tick = (f3 == F_TIMER and f7 == 1) or f3 == F_SHIFT   # WAIT.TICK, SHIFT, PULSE
             if mine and not ready:
                 if not active and (f3 == F_WAIT_UNTIL or tick):   # first evaluation
                     pc = int(self.core.reg_pc.value)

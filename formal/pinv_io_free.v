@@ -5,7 +5,7 @@
 // is proven separately (formal/pinv_io.sby).
 
 module pinv_io (
-    input  wire        clk, resetn,
+    input  wire        clk, resetn, chip_resetn,
     input  wire        pcpi_valid,
     input  wire [31:0] pcpi_insn, pcpi_rs1, pcpi_rs2,
     output wire        pcpi_wr,

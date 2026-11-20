@@ -132,7 +132,7 @@ module tt_um_edoouuard_protoemu #(
     wire [7:0]  oe;
 
     pinv_io io (
-        .clk(clk), .resetn(core_resetn),
+        .clk(clk), .resetn(core_resetn), .chip_resetn(rst_n),
         .pcpi_valid(pcpi_valid), .pcpi_insn(pcpi_insn),
         .pcpi_rs1(pcpi_rs1), .pcpi_rs2(pcpi_rs2),
         .pcpi_wr(pcpi_wr), .pcpi_rd(pcpi_rd),

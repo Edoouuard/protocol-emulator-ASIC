@@ -9,8 +9,8 @@
 
     wire [2:0]  f3      = funct3;
     wire [6:0]  f7      = funct7;
-    wire        f_known = f3 <= F_WAIT_PIN || (f3 == F_TIMER && f7[6:2] == 5'd0)
-                       || (f3 == F_SHIFT && f7[6:2] == 5'd0);
+    wire        f_known = f3 <= F_WAIT_PIN || (f3 == F_TIMER && f7 <= 7'd5)
+                       || (f3 == F_SHIFT && (f7 <= 7'd3 || f7 == 7'd4 || f7 == 7'd6));
     wire        f_mine  = pcpi_valid && pcpi_insn[6:0] == 7'b0001011 && f_known;
     wire        pending = f_mine && !pcpi_ready;
     // Instructions that wait for the internal deadline: WAIT.TICK and every SHIFT.
@@ -18,6 +18,11 @@
     wire        f_set   = f3 == F_TIMER && f7 == 7'd0;
     wire        f_limit = f3 == F_TIMER && f7 == 7'd2;
     wire        f_lock  = f3 == F_TIMER && f7 == 7'd3;
+    wire        f_wave  = f3 == F_TIMER && f7 == 7'd4;
+    wire        f_idle  = f3 == F_TIMER && f7 == 7'd5;
+    wire        f_pulse = f3 == F_SHIFT && f7[2];
+    // Instructions that write the outputs when they are answered.
+    wire        f_wout  = f3 == F_OUT || (f3 == F_SHIFT && !f7[0]);
 
     function f_before(input [31:0] a, input [31:0] b);
         reg [31:0] d;
@@ -28,8 +33,9 @@
     always @(posedge clk) f_past <= 1'b1;
 
     // ---------------------------------------------------------------- environment
-    // Start in reset.
-    always @(*) if (!f_past) assume (!resetn);
+    // Start in reset. A chip reset always holds the core in reset too (project.v).
+    always @(*) if (!f_past) assume (!resetn && !chip_resetn);
+    always @(*) if (!chip_resetn) assume (!resetn);
 
     always @(posedge clk) if (f_past) begin
         // PicoRV32 keeps the instruction and its operands stable while it waits.
@@ -58,6 +64,20 @@
             f_future <= f_before(counter, f_tick ? deadline : pcpi_rs1);
             f_start  <= counter;
             f_lim    <= wait_max;
+        end
+    end
+
+    // Ghost state for W2: width of the pulse in flight, cycles since it started.
+    reg [15:0] f_len, f_el;
+    always @(posedge clk) begin
+        if (!resetn) begin
+            f_len <= 16'd0;
+            f_el  <= 16'd0;
+        end else if (pending && f_pulse && tick_reached) begin
+            f_len <= pulse_len;
+            f_el  <= 16'd0;
+        end else if (fall_on) begin
+            f_el  <= f_el + 16'd1;
         end
     end
 
@@ -124,14 +144,39 @@
 
         // P6. PIN_OUT updates exactly the masked bits, one cycle after it is accepted...
         if (pcpi_ready && $past(f3) == F_OUT)
-            assert (pins_out == (($past(pins_out) & ~$past(pcpi_rs2[15:0])) | ($past(pcpi_rs1[15:0]) & $past(pcpi_rs2[15:0]))));
+            assert (pins_out == (($past(pins_now) & ~$past(pcpi_rs2[15:0])) | ($past(pcpi_rs1[15:0]) & $past(pcpi_rs2[15:0]))));
         // ...SHIFT.OUT drives exactly one pin, the selected one, with the outgoing bit...
-        if (pcpi_ready && $past(f3) == F_SHIFT && !$past(f7[0]))
-            assert (pins_out == (($past(pins_out) & ~(16'd1 << $past(pcpi_rs2[3:0])))
+        if (pcpi_ready && $past(f3) == F_SHIFT && !$past(f7[0]) && !$past(f7[2]))
+            assert (pins_out == (($past(pins_now) & ~(16'd1 << $past(pcpi_rs2[3:0])))
                                  | ({15'd0, $past(f7[1]) ? $past(pcpi_rs1[31]) : $past(pcpi_rs1[0])} << $past(pcpi_rs2[3:0]))));
-        // ...and nothing else ever changes the outputs.
-        if (!(pcpi_ready && ($past(f3) == F_OUT || ($past(f3) == F_SHIFT && !$past(f7[0])))))
-            assert (pins_out == $past(pins_out));
+        // ...PULSE first ends the pulse in flight, then raises its own pin and
+        // arms the falling edge with the width selected by the data bit...
+        if (pcpi_ready && $past(f_pulse))
+            assert (pins_out == (($past(fall_on) ? $past(pins_now) & ~(16'd1 << $past(fall_pin)) : $past(pins_now))
+                                 | (16'd1 << $past(pcpi_rs2[3:0])))
+                    && fall_on && fall_pin == $past(pcpi_rs2[3:0])
+                    && fall_left == ((($past(f7[1]) ? $past(pcpi_rs1[31]) : $past(pcpi_rs1[0]))) ? $past(t1) : $past(t0)));
+        // ...and nothing else changes the outputs, except the falling edge of a pulse.
+        if (!(pcpi_ready && $past(f_wout)))
+            assert (pins_out == $past(pins_now));
+
+        // W1. The falling edge of a pulse happens by itself: the countdown moves by
+        // one every cycle, and the pin drops when it ends, whatever the core does.
+        if ($past(fall_now) && !(pcpi_ready && $past(f_pulse) && $past(pcpi_rs2[3:0]) == $past(fall_pin))
+                            && !(pcpi_ready && $past(f_wout) && !$past(f_pulse)))
+            assert (!pins_out[$past(fall_pin)]);
+        if (!(pcpi_ready && $past(f_pulse))) begin
+            if ($past(fall_now))     assert (!fall_on);
+            else if ($past(fall_on)) assert (fall_on && fall_pin == $past(fall_pin) && fall_left == $past(fall_left) - 16'd1);
+            else                     assert (!fall_on);
+        end
+        // W2. Exact pulse width: a pulse ends exactly t cycles after it started
+        // (t = 0 behaves as 1), where t is the width chosen when it started.
+        if (fall_on) assert (fall_left + f_el == f_len && f_el <= f_len && (f_len == 16'd0 || fall_left != 16'd0));
+        if (fall_now) assert (f_el + 16'd1 == (f_len == 16'd0 ? 16'd1 : f_len));
+        // The widths change only through SET.WAVE.
+        if (pcpi_ready && $past(f_wave)) assert (t0 == $past(pcpi_rs1[15:0]) && t1 == $past(pcpi_rs1[31:16]));
+        else assert (t0 == $past(t0) && t1 == $past(t1));
 
         // P7. Only PIN_DIR changes the pin directions, and only the masked ones.
         if (pcpi_ready && $past(f3) == F_DIR)
@@ -175,13 +220,26 @@
 `endif
 
 `ifdef PROPS_CORE
-    // P8. Reset puts outputs, directions and the counter in a known state.
+    // P8. Reset puts outputs, directions and the counter in a known state: the
+    // idle state during a program reload, all zero after a chip reset.
     always @(posedge clk) if (f_past && !$past(resetn)) begin
-        assert (pins_out == 16'd0);
-        assert (uio_oe == 8'd0);
+        assert (pins_out == ($past(chip_resetn) ? $past(idle_out) : 16'd0));
+        assert (uio_oe == ($past(chip_resetn) ? $past(idle_oe) : 8'd0));
+        assert (!fall_on);
         assert (counter == 32'd0);
         assert (!pcpi_ready);
         assert (!lock_req);
+    end
+
+    // I1. The idle state is cleared by a chip reset, set only by SET.IDLE from a
+    // running program, and survives everything else, program reloads included.
+    always @(posedge clk) if (f_past) begin
+        if (!$past(chip_resetn))
+            assert (idle_out == 16'd0 && idle_oe == 8'd0);
+        else if ($past(resetn) && $past(pending) && $past(f_idle))
+            assert (idle_out == $past(pcpi_rs1[15:0]) && idle_oe == $past(pcpi_rs2[15:8]));
+        else
+            assert (idle_out == $past(idle_out) && idle_oe == $past(idle_oe));
     end
 
 `endif
@@ -195,4 +253,8 @@
         cover (pcpi_ready && $past(f3) == F_SHIFT && $past(f7) == 7'd1);
         cover (pcpi_ready && $past(f3) == F_WAIT_PIN && timed_out && !$past(timed_out));
         cover (lock_req);
+        cover ($past(fall_now) && f_len == 16'd3 && !$past(pcpi_ready));   // a full 3-cycle pulse
+        cover (pcpi_ready && $past(f_pulse) && $past(fall_on));             // back-to-back pulses
     end
+    always @(posedge clk) if (f_past && chip_resetn)
+        cover (!resetn && !$past(resetn) && pins_out != 16'd0);             // idle state held in reset

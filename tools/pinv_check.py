@@ -20,7 +20,7 @@ This tool proves, before the program is loaded, that it can never happen:
     PINV_BUDGET(cycles), and fails if any path can exceed it, or if a loop
     without a bound sits between an anchor and a deadline.
 
-Deadline waits are WAIT_UNTIL and the timer instructions (WAIT_TICK, SHIFT_*),
+Deadline waits are WAIT_UNTIL and the timer instructions (WAIT_TICK, SHIFT_*, PULSE*),
 whose deadline is the internal one, advanced by the step at each of them.
 
 Usage:  pinv_check.py program.elf [--verbose]      exit code 0 = proven, 1 = not
@@ -70,10 +70,11 @@ ALU_IMM_OPS = {"addi", "andi", "ori", "xori", "slti", "sltiu", "lui", "auipc",
                "c.li", "c.lui", "c.addi", "c.andi", "c.addi16sp", "c.addi4spn", "c.nop"}
 
 CUSTOM = {0: "PIN_OUT", 1: "PIN_IN", 2: "PIN_DIR", 3: "TIME", 4: "WAIT_UNTIL", 5: "WAIT_PIN"}
-TIMER = {0: "SET_TIMER", 1: "WAIT_TICK", 2: "SET_LIMIT", 3: "LOCK"}
-SHIFT = {0: "SHIFT_OUT", 1: "SHIFT_IN", 2: "SHIFT_OUTM", 3: "SHIFT_INM"}
+TIMER = {0: "SET_TIMER", 1: "WAIT_TICK", 2: "SET_LIMIT", 3: "LOCK", 4: "SET_WAVE", 5: "SET_IDLE"}
+SHIFT = {0: "SHIFT_OUT", 1: "SHIFT_IN", 2: "SHIFT_OUTM", 3: "SHIFT_INM", 4: "PULSE", 6: "PULSEM"}
 # Instructions that wait for a deadline: they end a timed segment, and start the next one.
-DEADLINE_WAITS = {"WAIT_UNTIL", "WAIT_TICK", "SHIFT_OUT", "SHIFT_IN", "SHIFT_OUTM", "SHIFT_INM"}
+DEADLINE_WAITS = {"WAIT_UNTIL", "WAIT_TICK", "SHIFT_OUT", "SHIFT_IN", "SHIFT_OUTM", "SHIFT_INM",
+                  "PULSE", "PULSEM"}
 ANCHORS = {"TIME", "WAIT_PIN"} | DEADLINE_WAITS
 
 
@@ -221,8 +222,10 @@ def build_cfg(insns):
                 raise SystemExit(f"pinv_check: indirect call at 0x{a:x} not supported")
             f = function_of(a)
             rets = calls.get((rs, f), [])
-            if not rets:
+            if not rets and any(k[1] == f for k in calls):
                 raise SystemExit(f"pinv_check: cannot resolve return at 0x{a:x} (x{rs})")
+            # a function nobody calls (a library routine this program does not use)
+            # is dead code: its return has no successor.
             out += [(r, penalty(r)) for r in rets if r is not None]
         else:
             if a in nxt:

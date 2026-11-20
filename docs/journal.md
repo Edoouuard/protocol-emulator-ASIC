@@ -220,8 +220,27 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 14. Trois ajouts : impulsions exactes, état de repos, pare-feu SPI
+
+**1. Le sérialiseur de formes d'onde (`PULSE`).** Certains protocoles codent un bit par la durée d'une impulsion, comme les LED WS2812 : un 0 est haut 0,4 µs, un 1 est haut 0,8 µs, sur une période de 1,25 µs. Avec les instructions existantes, il fallait deux fronts logiciels par bit. `PULSE` place les deux fronts en matériel : le front montant à l'échéance, le front descendant exactement t cycles plus tard, avec t choisi par le bit (`SET_WAVE` règle les deux durées). Le processeur n'envoie qu'une instruction par bit.
+
+- Démo `ws2812.S` : 4 LED, couleurs qui tournent. 128 octets.
+- Le vérificateur de minutage prouve le programme pour toute période d'au moins 39 cycles (un peu plus de 1 Mbit/s à 40 MHz). Le WS2812 demande 50 cycles.
+- En simulation, chaque impulsion dure exactement 16 ou 32 cycles et chaque période exactement 50.
+
+**2. L'état de repos (`SET_IDLE`).** Avant, toutes les sorties passaient à 0 pendant un rechargement de programme. Pour une ligne UART, c'est un faux bit de départ. Pour un chip select actif à l'état bas, ça sélectionne la puce voisine. Maintenant, le programme choisit l'état des sorties pendant un rechargement. Seule une vraie remise à zéro de la puce l'efface.
+
+**3. Le pare-feu de bus SPI (`spi_firewall.S`).** PinV se place entre un microcontrôleur et la mémoire flash qui contient son firmware. Les lectures passent. Les écritures et les effacements sont bloqués avant que la flash ne voie un seul bit, puis journalisés sur l'UART. Le programme verrouille la puce (`LOCK`), garde la flash désélectionnée pendant un rechargement (`SET_IDLE`) et borne toutes ses attentes (`SET_LIMIT`). Un hôte compromis ne peut donc ni écrire dans la flash, ni retirer le pare-feu, ni le bloquer. Limite assumée : le bus est recopié en logiciel, donc l'hôte doit rester sous 33 kHz environ.
+
+**Les preuves.** Nouvelles propriétés formelles : la largeur exacte de chaque impulsion, le front descendant qui n'est jamais perdu quelle que soit l'instruction en cours, l'état de repos appliqué à chaque rechargement. Cinq bugs injectés exprès sont tous détectés, avec un contre-exemple concret.
+
+**Ce que la preuve a attrapé en chemin.** Une de mes propriétés était fausse sans le dire : à cause de la priorité des opérateurs en Verilog (`==` passe avant `|`), elle était toujours vraie. Le test par mutation l'a révélé, parce qu'un bug injecté passait. Corrigé. Deux autres trouvailles : le moniteur des tests prenait `LOCK` et `SET_IDLE` pour des attentes, et le vérificateur de minutage refusait un programme qui n'appelle pas toutes les routines UART. Corrigés aussi.
+
+**À retenir.** Une preuve qui passe ne vaut que si elle peut échouer. Injecter des bugs exprès est le seul moyen de le vérifier.
+
+---
+
 ## Ce qui reste à faire
 
-1. Le sérialiseur à formes d'onde (protocoles rapides, LED WS2812), la démo de pare-feu de bus SPI, l'état de démarrage configurable des sorties.
-2. Rédiger le compte rendu pour le jury.
-3. Soumettre avant le 18 janvier 2027.
+1. Relire le compte rendu pour le jury (`docs/writeup.md`).
+2. Soumettre avant le 18 janvier 2027.

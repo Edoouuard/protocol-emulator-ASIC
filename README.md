@@ -11,6 +11,7 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 **Timing is proven, not just tested.** The hardware timing contract (zero-jitter `WAIT_UNTIL`, exact `PIN_OUT`, safe loading) is proven formally with SymbiYosys (`formal/`). On top of it, `tools/pinv_check.py` analyses every path of a program and proves, before it is loaded, that no deadline can be missed. The build refuses a program it cannot prove. Its cost model is calibrated on the RTL and matches the simulation to the cycle.
 
 - Target: IHP 130 nm CMOS5L via Tiny Tapeout, 8x4 tiles.
+- **Write-up for the jury: [`docs/writeup.md`](docs/writeup.md)**
 - Architecture, instruction set and timing model: [`docs/architecture.md`](docs/architecture.md)
 - Datasheet: [`docs/info.md`](docs/info.md)
 
@@ -27,9 +28,12 @@ PinV is the open-source [PicoRV32](https://github.com/YosysHQ/picorv32) RISC-V c
 | Formal proof of the pin/timing unit, loader and top level (SymbiYosys) | ✅ |
 | Fused timer/shift instructions: UART 2.4× faster (proven 18 cycles per bit, was 44) | ✅ |
 | Security: bounded waits, program lock, timing non-interference — all proven | ✅ |
-| GDS + precheck passing | ⏳ first run pending |
-| Base ISA tests, gate-level simulation | ⏳ |
-| Write-up | ⏳ |
+| Waveform serializer (`PULSE`): WS2812 LED demo | ✅ |
+| Idle pin state during reloads (`SET_IDLE`) | ✅ |
+| SPI bus firewall demo (reads pass, writes and erases blocked) | ✅ |
+| GDS + precheck passing (40 MHz) | ✅ |
+| Gate-level simulation in CI | ✅ |
+| Write-up | ✅ [`docs/writeup.md`](docs/writeup.md) |
 
 ## Repository layout
 

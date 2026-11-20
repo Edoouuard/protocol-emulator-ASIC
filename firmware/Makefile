@@ -25,13 +25,17 @@ I2C_Q      ?= 94
 DEFS   := -DBIT_CYCLES=$(BIT_CYCLES) -DSPI_MODE=$(SPI_MODE) -DSPI_HALF=$(SPI_HALF) -DI2C_Q=$(I2C_Q) $(EXTRA)
 CFLAGS := -march=rv32ec -mabi=ilp32e -nostdlib -nostartfiles -Os -I. -T link.ld $(DEFS)
 
-PROGRAMS := uart_echo spi_jedec i2c_read
+PROGRAMS := uart_echo spi_jedec i2c_read ws2812 spi_firewall
 
 all: $(PROGRAMS:%=build/%.bin)
 
+# Shared routines linked into each program (ws2812 needs none).
+LIBS = uart.S
+build/ws2812.elf: LIBS =
+
 build/%.elf: %.S uart.S pinv.h link.ld
 	@mkdir -p build
-	$(CC) $(CFLAGS) -o $@ $< uart.S
+	$(CC) $(CFLAGS) -o $@ $< $(LIBS)
 
 CHECK ?= 1
 

@@ -14,6 +14,7 @@
 module pinv_io_ni (
     input wire        clk,
     input wire        resetn,
+    input wire        chip_resetn,
     input wire        pcpi_valid,
     input wire [31:0] pcpi_insn,
     input wire [31:0] rs1_a,
@@ -25,13 +26,13 @@ module pinv_io_ni (
     wire [31:0] rd_a, rd_b;
     wire [15:0] out_a, out_b;
     wire [7:0]  oe_a, oe_b;
-    wire [130:0] st_a, st_b;
+    wire [138:0] st_a, st_b;
 
-    pinv_io a (.clk(clk), .resetn(resetn), .pcpi_valid(pcpi_valid), .pcpi_insn(pcpi_insn),
+    pinv_io a (.clk(clk), .resetn(resetn), .chip_resetn(chip_resetn), .pcpi_valid(pcpi_valid), .pcpi_insn(pcpi_insn),
                .pcpi_rs1(rs1_a), .pcpi_rs2(pcpi_rs2), .pcpi_wr(wr_a), .pcpi_rd(rd_a),
                .pcpi_wait(wait_a), .pcpi_ready(ready_a), .pins_in(pins_in),
                .pins_out(out_a), .uio_oe(oe_a), .lock_req(lock_a), .f_timing_state(st_a));
-    pinv_io b (.clk(clk), .resetn(resetn), .pcpi_valid(pcpi_valid), .pcpi_insn(pcpi_insn),
+    pinv_io b (.clk(clk), .resetn(resetn), .chip_resetn(chip_resetn), .pcpi_valid(pcpi_valid), .pcpi_insn(pcpi_insn),
                .pcpi_rs1(rs1_b), .pcpi_rs2(pcpi_rs2), .pcpi_wr(wr_b), .pcpi_rd(rd_b),
                .pcpi_wait(wait_b), .pcpi_ready(ready_b), .pins_in(pins_in),
                .pins_out(out_b), .uio_oe(oe_b), .lock_req(lock_b), .f_timing_state(st_b));
@@ -43,7 +44,8 @@ module pinv_io_ni (
 
     reg f_past = 1'b0;
     always @(posedge clk) f_past <= 1'b1;
-    always @(*) if (!f_past) assume (!resetn);
+    always @(*) if (!f_past) assume (!resetn && !chip_resetn);
+    always @(*) if (!chip_resetn) assume (!resetn);
 
     // Same instruction stream and timing operands; data operands are free.
     always @(*) if (!data_rs1) assume (rs1_a == rs1_b);

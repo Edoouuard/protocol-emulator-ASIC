@@ -208,9 +208,20 @@ Ce journal raconte la construction de PinV dans l'ordre, en langage simple. Pour
 
 ---
 
+## Étape 13. La fabrication virtuelle bloquée par des plots d'entrée/sortie
+
+**Le symptôme.** Après la correction de l'étape 12, la fabrication virtuelle (GDS) échouait au placement : « l'instance _45354_ n'est pas placée ». Changer la densité de placement ou désactiver le placement guidé par le routage ne changeait rien : la même instance bloquait toujours.
+
+**La cause.** En comparant la liste des cellules avec celle du dernier run réussi, deux cellules inattendues sont apparues : des plots de sortie IHP (`IOPadOut16mA`). Ce sont les gros blocs de connexion placés normalement au bord de la puce, d'environ 14 400 µm² chacun. L'outil de synthèse (ABC) les avait choisis comme amplificateurs pour deux signaux très chargés, parce qu'ils figurent dans la bibliothèque qu'on lui donne. Aucun ne peut tenir dans une tuile.
+
+**La correction.** Une ligne dans `src/config.json` : `"EXTRA_EXCLUDED_CELLS": ["sg13cmos5l_IOPad*"]`, qui interdit ces cellules à la synthèse. Résultat : la fabrication virtuelle passe (2 h 24), la simulation sur portes réelles aussi (UART, SPI, I2C, verrou), avec la correction de l'étape 12 incluse.
+
+**À retenir.** Quand une erreur résiste à tous les réglages, il faut chercher ce qui a changé entre le dernier run réussi et le premier en échec, ici la liste des cellules, au lieu de continuer à tourner des boutons.
+
+---
+
 ## Ce qui reste à faire
 
-1. Confirmer sur GitHub que la simulation sur portes réelles passe avec la correction.
-2. Le sérialiseur à formes d'onde (protocoles rapides, LED WS2812), la démo de pare-feu de bus SPI, l'état de démarrage configurable des sorties.
-3. Rédiger le compte rendu pour le jury.
-4. Soumettre avant le 18 janvier 2027.
+1. Le sérialiseur à formes d'onde (protocoles rapides, LED WS2812), la démo de pare-feu de bus SPI, l'état de démarrage configurable des sorties.
+2. Rédiger le compte rendu pour le jury.
+3. Soumettre avant le 18 janvier 2027.

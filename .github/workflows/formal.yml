@@ -8,6 +8,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install SymbiYosys (YoWASP) and the Yices solver
-        run: pip install yowasp-yosys yices-solver
+        run: |
+          sudo apt-get update && sudo apt-get install -y yosys
+          pip install yowasp-yosys yices-solver
       - name: Prove the pin/timing unit, timing non-interference, the loader and the top level
         run: make -C formal SBY=yowasp-sby

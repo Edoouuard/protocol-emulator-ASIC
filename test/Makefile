@@ -8,6 +8,8 @@ TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = project.v pinv_io.v pinv_loader.v picorv32.v
 
+export GATES
+
 ifneq ($(GATES),yes)
 
 # RTL simulation:

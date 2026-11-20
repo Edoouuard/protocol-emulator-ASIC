@@ -10,7 +10,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
-from deadline_monitor import DeadlineMonitor
+from deadline_monitor import GATE_LEVEL, DeadlineMonitor
 
 PROGRAMS = Path(__file__).parent / "programs"
 
@@ -456,11 +456,13 @@ async def test_lock(dut):
             if int(dut.user_project.core_resetn.value) == 0:
                 stopped.append(1)
 
-    w = cocotb.start_soon(watch())
+    if not GATE_LEVEL:   # internal signals only exist in RTL simulation
+        w = cocotb.start_soon(watch())
     await load_program(dut, (PROGRAMS / "i2c_read.bin").read_bytes())
-    w.cancel()
-    assert not stopped, "LOAD stopped the core although the chip is locked"
-    assert int(dut.user_project.locked.value) == 1
+    if not GATE_LEVEL:
+        w.cancel()
+        assert not stopped, "LOAD stopped the core although the chip is locked"
+        assert int(dut.user_project.locked.value) == 1
 
     # The original program still runs: it echoes.
     rec = EdgeRecorder(dut, 0)
@@ -474,4 +476,5 @@ async def test_lock(dut):
     await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 5)
-    assert int(dut.user_project.locked.value) == 0
+    if not GATE_LEVEL:
+        assert int(dut.user_project.locked.value) == 0

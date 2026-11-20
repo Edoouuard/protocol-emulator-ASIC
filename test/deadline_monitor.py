@@ -5,8 +5,14 @@ the code took since the previous timing anchor and whether the deadline was miss
 A deadline is missed when, the first time the WAIT_UNTIL is evaluated, the cycle
 counter is already past it: the edge that follows will come late.
 """
+import os
+
 import cocotb
 from cocotb.triggers import RisingEdge
+
+# In gate-level simulation the design is flattened into standard cells: internal
+# signals do not exist any more, so the monitor stays passive there.
+GATE_LEVEL = os.environ.get("GATES") == "yes"
 
 F_TIME, F_WAIT_UNTIL, F_WAIT_PIN, F_TIMER, F_SHIFT = 3, 4, 5, 6, 7
 
@@ -19,10 +25,12 @@ def _s32(v):
 class DeadlineMonitor:
     def __init__(self, dut):
         self.dut = dut
-        self.io = dut.user_project.io
-        self.core = dut.user_project.core
         self.misses = []            # (pc, cycles late)
         self.segments = {}          # pc of WAIT_UNTIL -> max observed cycles since anchor
+        if GATE_LEVEL:
+            return
+        self.io = dut.user_project.io
+        self.core = dut.user_project.core
         cocotb.start_soon(self._run())
 
     async def _run(self):
